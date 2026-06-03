@@ -9,6 +9,8 @@ import (
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
+
+	"botson/internal/commands"
 )
 
 // Gateway defines the lifecycle of a message gateway (e.g. Discord, Telegram).
@@ -54,8 +56,20 @@ func (gm *GatewayManager) Register(g Gateway) {
 func (gm *GatewayManager) Start(ctx context.Context) {
 	log.Println("Starting background messaging gateways...")
 
-	runFn := func(ctx context.Context, sessionID string, query string) (string, error) {
-		events := gm.runner.Run(ctx, gm.agent.Name(), sessionID, &genai.Content{
+	runFn := func(ctx context.Context, sessionKey string, query string) (string, error) {
+		// 1. Process commands first
+		cmdCtx := commands.CommandContext{
+			SessionKey: sessionKey,
+		}
+		if resp, handled, err := commands.Process(ctx, cmdCtx, query); handled {
+			return resp, err
+		}
+
+		// 2. Resolve active session ID
+		activeSessionID := commands.GetActiveSession(sessionKey)
+
+		// 3. Run LLM query
+		events := gm.runner.Run(ctx, gm.agent.Name(), activeSessionID, &genai.Content{
 			Role: "user",
 			Parts: []*genai.Part{
 				{Text: query},

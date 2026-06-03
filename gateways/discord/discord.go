@@ -81,14 +81,14 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 			prompt = strings.TrimSpace(prompt)
 		}
 
-		// Use ChannelID as sessionID to persist conversation context per channel
-		sessionID := m.ChannelID
+		// Use platform-prefixed channel key to identify the session
+		sessionKey := "discord:" + m.ChannelID
 
 		// Trigger typing indicator
 		s.ChannelTyping(m.ChannelID)
 
 		// Run query
-		response, err := runFn(ctx, sessionID, prompt)
+		response, err := runFn(ctx, sessionKey, prompt)
 		if err != nil {
 			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error running query: %v", err))
 			return
