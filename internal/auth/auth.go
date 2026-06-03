@@ -42,7 +42,13 @@ func getDataDir() string {
 
 // LoadAllowlist loads the gateway user allowlist from disk.
 func LoadAllowlist() (Allowlist, error) {
-	dir := getDataDir()
+	mu.Lock()
+	defer mu.Unlock()
+	return loadAllowlistLocked()
+}
+
+func loadAllowlistLocked() (Allowlist, error) {
+	dir := dataDir
 	path := filepath.Join(dir, "allowlist.json")
 	file, err := os.Open(path)
 	if err != nil {
@@ -62,7 +68,13 @@ func LoadAllowlist() (Allowlist, error) {
 
 // SaveAllowlist writes the gateway user allowlist to disk.
 func SaveAllowlist(al Allowlist) error {
-	dir := getDataDir()
+	mu.Lock()
+	defer mu.Unlock()
+	return saveAllowlistLocked(al)
+}
+
+func saveAllowlistLocked(al Allowlist) error {
+	dir := dataDir
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -76,7 +88,13 @@ func SaveAllowlist(al Allowlist) error {
 
 // LoadPairings loads the pending pairings list from disk.
 func LoadPairings() ([]PendingPairing, error) {
-	dir := getDataDir()
+	mu.Lock()
+	defer mu.Unlock()
+	return loadPairingsLocked()
+}
+
+func loadPairingsLocked() ([]PendingPairing, error) {
+	dir := dataDir
 	path := filepath.Join(dir, "pairings.json")
 	file, err := os.Open(path)
 	if err != nil {
@@ -96,7 +114,13 @@ func LoadPairings() ([]PendingPairing, error) {
 
 // SavePairings writes the pending pairings list to disk.
 func SavePairings(pairings []PendingPairing) error {
-	dir := getDataDir()
+	mu.Lock()
+	defer mu.Unlock()
+	return savePairingsLocked(pairings)
+}
+
+func savePairingsLocked(pairings []PendingPairing) error {
+	dir := dataDir
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
@@ -129,7 +153,7 @@ func CheckAuth(gateway, userID, username string) (bool, string, error) {
 	gateway = strings.ToLower(gateway)
 
 	// 1. Check Allowlist
-	al, err := LoadAllowlist()
+	al, err := loadAllowlistLocked()
 	if err != nil {
 		return false, "", fmt.Errorf("failed to load allowlist: %w", err)
 	}
@@ -143,7 +167,7 @@ func CheckAuth(gateway, userID, username string) (bool, string, error) {
 	}
 
 	// 2. Check Pending Pairings
-	pairings, err := LoadPairings()
+	pairings, err := loadPairingsLocked()
 	if err != nil {
 		return false, "", fmt.Errorf("failed to load pairings: %w", err)
 	}
@@ -180,7 +204,7 @@ func CheckAuth(gateway, userID, username string) (bool, string, error) {
 	}
 
 	pairings = append(pairings, newPairing)
-	if err := SavePairings(pairings); err != nil {
+	if err := savePairingsLocked(pairings); err != nil {
 		return false, "", fmt.Errorf("failed to save pending pairing: %w", err)
 	}
 
@@ -198,7 +222,7 @@ func ApprovePairing(gateway, code string) (string, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 
 	// 1. Load pending pairings
-	pairings, err := LoadPairings()
+	pairings, err := loadPairingsLocked()
 	if err != nil {
 		return "", fmt.Errorf("failed to load pairings: %w", err)
 	}
@@ -218,7 +242,7 @@ func ApprovePairing(gateway, code string) (string, error) {
 	target := pairings[matchIdx]
 
 	// 2. Load and update allowlist
-	al, err := LoadAllowlist()
+	al, err := loadAllowlistLocked()
 	if err != nil {
 		return "", fmt.Errorf("failed to load allowlist: %w", err)
 	}
@@ -234,14 +258,14 @@ func ApprovePairing(gateway, code string) (string, error) {
 
 	if !alreadyExists {
 		al[gateway] = append(list, target.UserID)
-		if err := SaveAllowlist(al); err != nil {
+		if err := saveAllowlistLocked(al); err != nil {
 			return "", fmt.Errorf("failed to save allowlist: %w", err)
 		}
 	}
 
 	// 3. Remove pairing from pending list
 	pairings = append(pairings[:matchIdx], pairings[matchIdx+1:]...)
-	if err := SavePairings(pairings); err != nil {
+	if err := savePairingsLocked(pairings); err != nil {
 		return "", fmt.Errorf("failed to save updated pairings: %w", err)
 	}
 
