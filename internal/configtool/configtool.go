@@ -6,7 +6,7 @@ import (
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 
-	"botson/tools/config"
+	"botson/internal/config"
 )
 
 type ReadConfigArgs struct{}

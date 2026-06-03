@@ -12,8 +12,9 @@ import (
 	"google.golang.org/genai"
 	botsonAgent "botson/agent"
 	"botson/providers"
-	"botson/tools/config"
-	"botson/tools/configtool"
+	"botson/internal/config"
+	"botson/internal/configtool"
+	"botson/tools/time"
 )
 
 func main() {
@@ -40,7 +41,8 @@ func main() {
 	// Create tools
 	readTool, _ := configtool.MakeReadConfigTool(mgr)
 	writeTool, _ := configtool.MakeUpdateConfigTool(mgr)
-	toolsList := []tool.Tool{readTool, writeTool}
+	timeTool, _ := time.MakeGetTimeTool()
+	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 
 	// Create agent
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)

@@ -17,8 +17,9 @@ import (
 	botsonAgent "botson/agent"
 	"botson/gateways"
 	"botson/providers"
-	"botson/tools/config"
-	"botson/tools/configtool"
+	"botson/internal/config"
+	"botson/internal/configtool"
+	"botson/tools/time"
 )
 
 func main() {
@@ -73,7 +74,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create update_config tool: %v", err)
 	}
-	toolsList := []tool.Tool{readTool, writeTool}
+	timeTool, err := time.MakeGetTimeTool()
+	if err != nil {
+		log.Fatalf("Failed to create get_time tool: %v", err)
+	}
+	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 
 	// 6. Create the agent
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)
@@ -133,7 +138,11 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	if err != nil {
 		log.Fatalf("Failed to create update_config tool: %v", err)
 	}
-	toolsList := []tool.Tool{readTool, writeTool}
+	timeTool, err := time.MakeGetTimeTool()
+	if err != nil {
+		log.Fatalf("Failed to create get_time tool: %v", err)
+	}
+	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)
 	if err != nil {
