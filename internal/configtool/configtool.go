@@ -14,28 +14,19 @@ type ReadConfigArgs struct{}
 type ConfigInfo struct {
 	Provider    string `json:"provider"`
 	Model       string `json:"model"`
-	APIKey      string `json:"api_key"`
 	Instruction string `json:"instruction"`
 }
 
-func maskAPIKey(key string) string {
-	if len(key) <= 12 {
-		return "********"
-	}
-	return key[:6] + "..." + key[len(key)-6:]
-}
-
-// MakeReadConfigTool returns an ADK tool for reading masked settings.
+// MakeReadConfigTool returns an ADK tool for reading configuration settings.
 func MakeReadConfigTool(mgr *config.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_config",
-		Description: "Reads the current active configuration of the Botson agent (masked API key, current model, provider, and system instruction). Use this when the user asks about settings.",
+		Description: "Reads the current active configuration of the Botson agent (current model, provider, and system instruction). Use this when the user asks about settings.",
 	}, func(ctx tool.Context, args ReadConfigArgs) (ConfigInfo, error) {
 		cfg := mgr.Get()
 		return ConfigInfo{
 			Provider:    cfg.Provider,
 			Model:       cfg.Model,
-			APIKey:      maskAPIKey(cfg.APIKey),
 			Instruction: cfg.Instruction,
 		}, nil
 	})

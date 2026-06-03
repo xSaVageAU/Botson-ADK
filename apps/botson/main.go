@@ -186,7 +186,7 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 		case "model":
 			fmt.Println(cfg.Model)
 		case "api_key":
-			fmt.Println(cfg.APIKey)
+			log.Fatal("Reading the API key is not permitted. You can only set a new one.")
 		case "instruction":
 			fmt.Println(cfg.Instruction)
 		default:
