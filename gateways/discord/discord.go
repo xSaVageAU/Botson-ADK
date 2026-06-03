@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+
+	"botson/internal/commands"
 )
 
 type DiscordGateway struct {
@@ -39,7 +41,7 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 	// Configure Intents
 	dg.session.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages | discordgo.IntentMessageContent
 
-	// Add event handler for message creation
+	// Add event handler for message creation (chatting)
 	dg.session.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Ignore messages created by the bot itself or other bots
 		if m.Author.ID == s.State.User.ID || m.Author.Bot {
@@ -81,6 +83,11 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 			prompt = strings.TrimSpace(prompt)
 		}
 
+		// Ignore slash commands in text, as they are handled by InteractionCreate!
+		if strings.HasPrefix(prompt, "/") {
+			return
+		}
+
 		// Use platform-prefixed channel key to identify the session
 		sessionKey := "discord:" + m.ChannelID
 
@@ -101,11 +108,66 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 		s.ChannelMessageSend(m.ChannelID, response)
 	})
 
+	// Add event handler for native slash commands
+	dg.session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if i.Type != discordgo.InteractionApplicationCommand {
+			return
+		}
+
+		data := i.ApplicationCommandData()
+		sessionKey := "discord:" + i.ChannelID
+		cmdCtx := commands.CommandContext{
+			SessionKey: sessionKey,
+		}
+
+		// Execute the universal command
+		resp, err := commands.Execute(ctx, data.Name, cmdCtx, "")
+		if err != nil {
+			errResp := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: fmt.Sprintf("❌ Error executing command: %v", err),
+				},
+			})
+			if errResp != nil {
+				log.Printf("[Discord] Error sending error interaction response: %v", errResp)
+			}
+			return
+		}
+
+		errResp := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: resp,
+			},
+		})
+		if errResp != nil {
+			log.Printf("[Discord] Error sending interaction response: %v", errResp)
+		}
+	})
+
 	if err := dg.session.Open(); err != nil {
 		return fmt.Errorf("failed to open discord gateway session: %w", err)
 	}
 
 	log.Println("[Discord] Discord gateway is active and connected.")
+
+	// Register native slash commands with Discord API
+	appID := dg.session.State.User.ID
+	log.Println("[Discord] Registering native application commands...")
+	for _, cmd := range commands.GetCommands() {
+		appCmd := &discordgo.ApplicationCommand{
+			Name:        cmd.Name,
+			Description: cmd.Description,
+		}
+		_, err := dg.session.ApplicationCommandCreate(appID, "", appCmd)
+		if err != nil {
+			log.Printf("[Discord] Failed to register slash command %q: %v", cmd.Name, err)
+		} else {
+			log.Printf("[Discord] Registered native slash command: /%s", cmd.Name)
+		}
+	}
+
 	<-ctx.Done()
 	return nil
 }

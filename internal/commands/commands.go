@@ -51,8 +51,19 @@ type CommandContext struct {
 // Handler defines a function to process a command.
 type Handler func(ctx context.Context, cmdCtx CommandContext, args string) (string, error)
 
-var registry = map[string]Handler{
-	"/new": handleNew,
+// Command represents a metadata definition for a command.
+type Command struct {
+	Name        string
+	Description string
+	Handler     Handler
+}
+
+var registry = map[string]Command{
+	"new": {
+		Name:        "new",
+		Description: "Start a fresh chat session in this channel",
+		Handler:     handleNew,
+	},
 }
 
 func handleNew(ctx context.Context, cmdCtx CommandContext, args string) (string, error) {
@@ -60,26 +71,53 @@ func handleNew(ctx context.Context, cmdCtx CommandContext, args string) (string,
 	return "🔄 Started a new chat session! The previous session history has been archived.", nil
 }
 
-// Process checks if the query is a command and executes it.
+// GetCommands returns a slice of all registered Command definitions.
+func GetCommands() []Command {
+	mu.RLock()
+	defer mu.RUnlock()
+	cmds := make([]Command, 0, len(registry))
+	for _, cmd := range registry {
+		cmds = append(cmds, cmd)
+	}
+	return cmds
+}
+
+// Execute direct executes a registered command handler.
+func Execute(ctx context.Context, cmdName string, cmdCtx CommandContext, args string) (string, error) {
+	mu.RLock()
+	cmd, exists := registry[cmdName]
+	mu.RUnlock()
+
+	if !exists {
+		return "", fmt.Errorf("command not found: %s", cmdName)
+	}
+
+	return cmd.Handler(ctx, cmdCtx, args)
+}
+
+// Process checks if the query is a command (prefixed with '/') and executes it.
 func Process(ctx context.Context, cmdCtx CommandContext, query string) (string, bool, error) {
 	query = strings.TrimSpace(query)
 	if !strings.HasPrefix(query, "/") {
 		return "", false, nil
 	}
 
-	parts := strings.SplitN(query, " ", 2)
-	cmd := parts[0]
+	parts := strings.SplitN(query[1:], " ", 2) // strip "/" prefix
+	cmdName := parts[0]
 	var args string
 	if len(parts) > 1 {
 		args = parts[1]
 	}
 
-	handler, exists := registry[cmd]
+	mu.RLock()
+	cmd, exists := registry[cmdName]
+	mu.RUnlock()
+
 	if !exists {
 		return "", false, nil
 	}
 
-	resp, err := handler(ctx, cmdCtx, args)
+	resp, err := cmd.Handler(ctx, cmdCtx, args)
 	if err != nil {
 		return "", true, err
 	}
