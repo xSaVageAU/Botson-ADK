@@ -83,11 +83,6 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 			prompt = strings.TrimSpace(prompt)
 		}
 
-		// Ignore slash commands in text, as they are handled by InteractionCreate!
-		if strings.HasPrefix(prompt, "/") {
-			return
-		}
-
 		// Use platform-prefixed channel key to identify the session
 		sessionKey := "discord:" + m.ChannelID
 

@@ -56,7 +56,8 @@ func hasNewCommand(contents []*genai.Content) bool {
 	}
 	last := contents[len(contents)-1]
 	for _, part := range last.Parts {
-		if strings.TrimSpace(part.Text) == "/new" {
+		// A command must start exactly with "/" (no leading whitespace)
+		if strings.HasPrefix(part.Text, "/") && strings.TrimSpace(part.Text) == "/new" {
 			return true
 		}
 	}

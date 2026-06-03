@@ -97,10 +97,12 @@ func Execute(ctx context.Context, cmdName string, cmdCtx CommandContext, args st
 
 // Process checks if the query is a command (prefixed with '/') and executes it.
 func Process(ctx context.Context, cmdCtx CommandContext, query string) (string, bool, error) {
-	query = strings.TrimSpace(query)
+	// A command must start exactly with "/" (no leading whitespace)
 	if !strings.HasPrefix(query, "/") {
 		return "", false, nil
 	}
+
+	query = strings.TrimSpace(query)
 
 	parts := strings.SplitN(query[1:], " ", 2) // strip "/" prefix
 	cmdName := parts[0]
