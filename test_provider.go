@@ -29,8 +29,20 @@ func main() {
 
 	sessSvc := session.InMemoryService()
 
-	modelGetter := func() string { return mgr.Get().Model }
-	apiKeyGetter := func() string { return mgr.Get().APIKey }
+	modelGetter := func() string {
+		pCfg, _ := mgr.GetProvider(mgr.Get().Provider)
+		if pCfg != nil {
+			return pCfg.Model
+		}
+		return ""
+	}
+	apiKeyGetter := func() string {
+		pCfg, _ := mgr.GetProvider(mgr.Get().Provider)
+		if pCfg != nil {
+			return pCfg.APIKey
+		}
+		return ""
+	}
 
 	// Create model
 	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)

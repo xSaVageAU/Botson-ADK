@@ -1,16 +1,16 @@
 package config
 
 import (
-	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestConfigLoadSave(t *testing.T) {
-	tempFile := "test_config.json"
-	defer os.Remove(tempFile)
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "config.json")
 
 	// Test default file creation
-	mgr, err := NewManager(tempFile)
+	mgr, err := NewManagerWithDataDir(tempFile, tempDir)
 	if err != nil {
 		t.Fatalf("failed to create config manager: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestConfigLoadSave(t *testing.T) {
 	}
 
 	// Load again
-	mgr2, err := NewManager(tempFile)
+	mgr2, err := NewManagerWithDataDir(tempFile, tempDir)
 	if err != nil {
 		t.Fatalf("failed to load saved config: %v", err)
 	}

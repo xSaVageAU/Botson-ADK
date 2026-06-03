@@ -24,9 +24,14 @@ func MakeReadConfigTool(mgr *config.Manager) (tool.Tool, error) {
 		Description: "Reads the current active configuration of the Botson agent (current model, provider, and system instruction). Use this when the user asks about settings.",
 	}, func(ctx tool.Context, args ReadConfigArgs) (ConfigInfo, error) {
 		cfg := mgr.Get()
+		modelName := ""
+		pCfg, _ := mgr.GetProvider(cfg.Provider)
+		if pCfg != nil {
+			modelName = pCfg.Model
+		}
 		return ConfigInfo{
 			Provider:    cfg.Provider,
-			Model:       cfg.Model,
+			Model:       modelName,
 			Instruction: cfg.Instruction,
 		}, nil
 	})
@@ -47,35 +52,50 @@ func MakeUpdateConfigTool(mgr *config.Manager) (tool.Tool, error) {
 		Description: "Updates the configuration settings of the Botson agent. You can update provider, model, api_key, discord_token, or system instruction. Note: changes will take effect immediately.",
 	}, func(ctx tool.Context, args UpdateConfigArgs) (string, error) {
 		cfg := mgr.Get()
-		updated := false
+		updatedCore := false
+		updatedProvider := false
 
 		if args.Provider != nil {
 			cfg.Provider = *args.Provider
-			updated = true
-		}
-		if args.Model != nil {
-			cfg.Model = *args.Model
-			updated = true
-		}
-		if args.APIKey != nil {
-			cfg.APIKey = *args.APIKey
-			updated = true
+			updatedCore = true
 		}
 		if args.Instruction != nil {
 			cfg.Instruction = *args.Instruction
-			updated = true
+			updatedCore = true
 		}
 		if args.DiscordToken != nil {
 			cfg.DiscordToken = *args.DiscordToken
-			updated = true
+			updatedCore = true
 		}
 
-		if !updated {
+		pCfg, err := mgr.GetProvider(cfg.Provider)
+		if err != nil {
+			return "", fmt.Errorf("failed to load provider configuration: %w", err)
+		}
+
+		if args.Model != nil {
+			pCfg.Model = *args.Model
+			updatedProvider = true
+		}
+		if args.APIKey != nil {
+			pCfg.APIKey = *args.APIKey
+			updatedProvider = true
+		}
+
+		if !updatedCore && !updatedProvider {
 			return "No configuration changes provided.", nil
 		}
 
-		if err := mgr.Save(cfg); err != nil {
-			return "", fmt.Errorf("failed to save configuration changes: %w", err)
+		if updatedCore {
+			if err := mgr.Save(cfg); err != nil {
+				return "", fmt.Errorf("failed to save configuration: %w", err)
+			}
+		}
+
+		if updatedProvider {
+			if err := mgr.SaveProvider(cfg.Provider, pCfg); err != nil {
+				return "", fmt.Errorf("failed to save provider configuration: %w", err)
+			}
 		}
 
 		return "Configuration updated successfully. The settings have been hot-reloaded.", nil

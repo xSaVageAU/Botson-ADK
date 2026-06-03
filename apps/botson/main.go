@@ -19,9 +19,11 @@ import (
 	"botson/gateways/discord"
 	"botson/gateways/telegram"
 	"botson/providers"
+	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/configtool"
 	"botson/tools/time"
+	"strings"
 )
 
 func main() {
@@ -34,7 +36,7 @@ func main() {
 	}
 	cfg := mgr.Get()
 
-	// 2. Intercept custom CLI commands (service, config)
+	// 2. Intercept custom CLI commands (service, config, pairing)
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "service":
@@ -47,6 +49,22 @@ func main() {
 		case "config":
 			handleConfigCommand(mgr, os.Args[2:])
 			return
+		case "pairing":
+			if len(os.Args) > 3 && os.Args[2] == "approve" {
+				if len(os.Args) < 5 {
+					log.Fatal("Usage: botson pairing approve <gateway> <code>")
+				}
+				gateway := os.Args[3]
+				code := os.Args[4]
+				username, err := auth.ApprovePairing(gateway, code)
+				if err != nil {
+					log.Fatalf("Failed to approve pairing: %v", err)
+				}
+				fmt.Printf("Successfully approved pairing for user %s on %s!\n", username, gateway)
+				return
+			}
+			printUsage()
+			return
 		}
 	}
 
@@ -55,10 +73,18 @@ func main() {
 
 	// Define dynamic config getters
 	modelGetter := func() string {
-		return mgr.Get().Model
+		pCfg, _ := mgr.GetProvider(mgr.Get().Provider)
+		if pCfg != nil {
+			return pCfg.Model
+		}
+		return ""
 	}
 	apiKeyGetter := func() string {
-		return mgr.Get().APIKey
+		pCfg, _ := mgr.GetProvider(mgr.Get().Provider)
+		if pCfg != nil {
+			return pCfg.APIKey
+		}
+		return ""
 	}
 
 	// 4. Initialize model provider
@@ -118,10 +144,18 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 
 	// Define dynamic config getters
 	modelGetter := func() string {
-		return mgr.Get().Model
+		pCfg, _ := mgr.GetProvider(mgr.Get().Provider)
+		if pCfg != nil {
+			return pCfg.Model
+		}
+		return ""
 	}
 	apiKeyGetter := func() string {
-		return mgr.Get().APIKey
+		pCfg, _ := mgr.GetProvider(mgr.Get().Provider)
+		if pCfg != nil {
+			return pCfg.APIKey
+		}
+		return ""
 	}
 
 	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
@@ -183,19 +217,41 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 	action := args[0]
 	key := args[1]
 
+	// Determine provider and sub-key
+	providerName := cfg.Provider
+	subKey := key
+	if strings.Contains(key, ".") {
+		parts := strings.SplitN(key, ".", 2)
+		providerName = parts[0]
+		subKey = parts[1]
+	}
+
 	switch action {
 	case "get":
-		switch key {
+		switch subKey {
 		case "provider":
+			if strings.Contains(key, ".") {
+				log.Fatalf("provider is a core configuration setting and cannot be prefixed with a provider name")
+			}
 			fmt.Println(cfg.Provider)
+		case "instruction":
+			if strings.Contains(key, ".") {
+				log.Fatalf("instruction is a core configuration setting and cannot be prefixed with a provider name")
+			}
+			fmt.Println(cfg.Instruction)
+		case "discord_token":
+			if strings.Contains(key, ".") {
+				log.Fatalf("discord_token is a core configuration setting and cannot be prefixed with a provider name")
+			}
+			log.Fatal("Reading the Discord token is not permitted. You can only set a new one.")
 		case "model":
-			fmt.Println(cfg.Model)
+			pCfg, err := mgr.GetProvider(providerName)
+			if err != nil {
+				log.Fatalf("Failed to get provider config: %v", err)
+			}
+			fmt.Println(pCfg.Model)
 		case "api_key":
 			log.Fatal("Reading the API key is not permitted. You can only set a new one.")
-		case "discord_token":
-			log.Fatal("Reading the Discord token is not permitted. You can only set a new one.")
-		case "instruction":
-			fmt.Println(cfg.Instruction)
 		default:
 			log.Fatalf("Unknown configuration key: %s", key)
 		}
@@ -204,22 +260,51 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 			log.Fatal("Missing value. Usage: botson config set <key> <value>")
 		}
 		val := args[2]
-		switch key {
+		switch subKey {
 		case "provider":
+			if strings.Contains(key, ".") {
+				log.Fatalf("provider is a core configuration setting and cannot be prefixed with a provider name")
+			}
 			cfg.Provider = val
-		case "model":
-			cfg.Model = val
-		case "api_key":
-			cfg.APIKey = val
-		case "discord_token":
-			cfg.DiscordToken = val
+			if err := mgr.Save(cfg); err != nil {
+				log.Fatalf("Failed to save configuration: %v", err)
+			}
 		case "instruction":
+			if strings.Contains(key, ".") {
+				log.Fatalf("instruction is a core configuration setting and cannot be prefixed with a provider name")
+			}
 			cfg.Instruction = val
+			if err := mgr.Save(cfg); err != nil {
+				log.Fatalf("Failed to save configuration: %v", err)
+			}
+		case "discord_token":
+			if strings.Contains(key, ".") {
+				log.Fatalf("discord_token is a core configuration setting and cannot be prefixed with a provider name")
+			}
+			cfg.DiscordToken = val
+			if err := mgr.Save(cfg); err != nil {
+				log.Fatalf("Failed to save configuration: %v", err)
+			}
+		case "model":
+			pCfg, err := mgr.GetProvider(providerName)
+			if err != nil {
+				log.Fatalf("Failed to get provider config: %v", err)
+			}
+			pCfg.Model = val
+			if err := mgr.SaveProvider(providerName, pCfg); err != nil {
+				log.Fatalf("Failed to save provider configuration: %v", err)
+			}
+		case "api_key":
+			pCfg, err := mgr.GetProvider(providerName)
+			if err != nil {
+				log.Fatalf("Failed to get provider config: %v", err)
+			}
+			pCfg.APIKey = val
+			if err := mgr.SaveProvider(providerName, pCfg); err != nil {
+				log.Fatalf("Failed to save provider configuration: %v", err)
+			}
 		default:
 			log.Fatalf("Unknown configuration key: %s", key)
-		}
-		if err := mgr.Save(cfg); err != nil {
-			log.Fatalf("Failed to save configuration: %v", err)
 		}
 		fmt.Printf("Successfully updated %s to %s\n", key, val)
 	default:
@@ -234,4 +319,5 @@ func printUsage() {
 	fmt.Println("  botson service start    - Run the background gateways daemon")
 	fmt.Println("  botson config get <key> - Print configuration value")
 	fmt.Println("  botson config set <key> <val> - Set configuration value")
+	fmt.Println("  botson pairing approve <gateway> <code> - Approve a pending pairing request")
 }

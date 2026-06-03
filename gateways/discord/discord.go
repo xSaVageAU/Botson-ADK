@@ -8,6 +8,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 
+	"botson/internal/auth"
 	"botson/internal/commands"
 )
 
@@ -73,6 +74,18 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 			return
 		}
 
+		if isDM {
+			authed, code, err := auth.CheckAuth("discord", m.Author.ID, m.Author.Username)
+			if err != nil {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error checking auth: %v", err))
+				return
+			}
+			if !authed {
+				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Hello! I don't recognize you yet. To enable chatting in this session, please provide your pairing code: `%s` to the bot owner and ask them to run:\n`botson pairing approve discord %s`", code, code))
+				return
+			}
+		}
+
 		prompt := m.Content
 		if isMentioned {
 			// Strip mentions out of prompt text
@@ -107,6 +120,28 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 	dg.session.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type != discordgo.InteractionApplicationCommand {
 			return
+		}
+
+		if i.User != nil { // DM
+			authed, code, err := auth.CheckAuth("discord", i.User.ID, i.User.Username)
+			if err != nil {
+				_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: fmt.Sprintf("❌ Error checking auth: %v", err),
+					},
+				})
+				return
+			}
+			if !authed {
+				_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+					Type: discordgo.InteractionResponseChannelMessageWithSource,
+					Data: &discordgo.InteractionResponseData{
+						Content: fmt.Sprintf("Hello! I don't recognize you yet. To enable chatting in this session, please provide your pairing code: `%s` to the bot owner and ask them to run:\n`botson pairing approve discord %s`", code, code),
+					},
+				})
+				return
+			}
 		}
 
 		data := i.ApplicationCommandData()
