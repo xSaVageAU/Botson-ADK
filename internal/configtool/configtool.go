@@ -33,17 +33,18 @@ func MakeReadConfigTool(mgr *config.Manager) (tool.Tool, error) {
 }
 
 type UpdateConfigArgs struct {
-	Provider    *string `json:"provider,omitempty"`
-	Model       *string `json:"model,omitempty"`
-	APIKey      *string `json:"api_key,omitempty"`
-	Instruction *string `json:"instruction,omitempty"`
+	Provider     *string `json:"provider,omitempty"`
+	Model        *string `json:"model,omitempty"`
+	APIKey       *string `json:"api_key,omitempty"`
+	Instruction  *string `json:"instruction,omitempty"`
+	DiscordToken *string `json:"discord_token,omitempty"`
 }
 
 // MakeUpdateConfigTool returns an ADK tool for updating settings.
 func MakeUpdateConfigTool(mgr *config.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "update_config",
-		Description: "Updates the configuration settings of the Botson agent. You can update provider, model, api_key, or system instruction. Note: changes will take effect immediately.",
+		Description: "Updates the configuration settings of the Botson agent. You can update provider, model, api_key, discord_token, or system instruction. Note: changes will take effect immediately.",
 	}, func(ctx tool.Context, args UpdateConfigArgs) (string, error) {
 		cfg := mgr.Get()
 		updated := false
@@ -62,6 +63,10 @@ func MakeUpdateConfigTool(mgr *config.Manager) (tool.Tool, error) {
 		}
 		if args.Instruction != nil {
 			cfg.Instruction = *args.Instruction
+			updated = true
+		}
+		if args.DiscordToken != nil {
+			cfg.DiscordToken = *args.DiscordToken
 			updated = true
 		}
 

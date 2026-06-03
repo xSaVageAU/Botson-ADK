@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
-	APIKey      string `json:"api_key"`
-	Instruction string `json:"instruction"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	APIKey       string `json:"api_key"`
+	Instruction  string `json:"instruction"`
+	DiscordToken string `json:"discord_token"`
 }
 
 type Manager struct {
@@ -45,10 +46,11 @@ func (m *Manager) Load() error {
 		if os.IsNotExist(err) {
 			// Write default config
 			m.config = &Config{
-				Provider:    "openrouter",
-				Model:       "openrouter/owl-alpha",
-				APIKey:      "YOUR_OPENROUTER_API_KEY",
-				Instruction: "You are Botson, a helpful AI assistant.",
+				Provider:     "openrouter",
+				Model:        "openrouter/owl-alpha",
+				APIKey:       "YOUR_OPENROUTER_API_KEY",
+				Instruction:  "You are Botson, a helpful AI assistant.",
+				DiscordToken: "YOUR_DISCORD_TOKEN",
 			}
 			data, err := json.MarshalIndent(m.config, "", "  ")
 			if err != nil {
@@ -73,10 +75,11 @@ func (m *Manager) Get() *Config {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return &Config{
-		Provider:    m.config.Provider,
-		Model:       m.config.Model,
-		APIKey:      m.config.APIKey,
-		Instruction: m.config.Instruction,
+		Provider:     m.config.Provider,
+		Model:        m.config.Model,
+		APIKey:       m.config.APIKey,
+		Instruction:  m.config.Instruction,
+		DiscordToken: m.config.DiscordToken,
 	}
 }
 

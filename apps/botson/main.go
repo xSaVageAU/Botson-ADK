@@ -16,6 +16,8 @@ import (
 
 	botsonAgent "botson/agent"
 	"botson/gateways"
+	"botson/gateways/discord"
+	"botson/gateways/telegram"
 	"botson/providers"
 	"botson/internal/config"
 	"botson/internal/configtool"
@@ -151,6 +153,9 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Fatalf("Failed to initialize gateways: %v", err)
 	}
 
+	gm.Register(discord.NewDiscordGateway(cfg.DiscordToken))
+	gm.Register(telegram.NewMockTelegramGateway())
+
 	gm.Start(ctx)
 	mgr.StartWatcher()
 
@@ -187,6 +192,8 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 			fmt.Println(cfg.Model)
 		case "api_key":
 			log.Fatal("Reading the API key is not permitted. You can only set a new one.")
+		case "discord_token":
+			log.Fatal("Reading the Discord token is not permitted. You can only set a new one.")
 		case "instruction":
 			fmt.Println(cfg.Instruction)
 		default:
@@ -204,6 +211,8 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 			cfg.Model = val
 		case "api_key":
 			cfg.APIKey = val
+		case "discord_token":
+			cfg.DiscordToken = val
 		case "instruction":
 			cfg.Instruction = val
 		default:
