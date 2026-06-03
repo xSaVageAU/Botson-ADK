@@ -8,3 +8,8 @@ config.json
 
 # Ignore markdown documentation files
 *.md
+
+# Ignore local data storage and backup files
+data/
+config.json.old
+*.exe~

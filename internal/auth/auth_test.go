@@ -89,3 +89,43 @@ func TestAuthFlow(t *testing.T) {
 		t.Errorf("expected pending pairings list to be empty after approval, got %d items", len(pairings))
 	}
 }
+
+func TestClearPairings(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "auth_clear_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	SetDataDir(tempDir)
+
+	// Add a pending pairing
+	_, _, err = CheckAuth("discord", "user123", "User")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify it is saved
+	pairings, err := LoadPairings()
+	if err != nil {
+		t.Fatalf("failed to load pairings: %v", err)
+	}
+	if len(pairings) != 1 {
+		t.Fatalf("expected 1 pending pairing, got %d", len(pairings))
+	}
+
+	// Clear pairings
+	if err := ClearPairings(); err != nil {
+		t.Fatalf("failed to clear pairings: %v", err)
+	}
+
+	// Verify they are cleared
+	pairings, err = LoadPairings()
+	if err != nil {
+		t.Fatalf("failed to load pairings: %v", err)
+	}
+	if len(pairings) != 0 {
+		t.Errorf("expected 0 pending pairings after ClearPairings, got %d", len(pairings))
+	}
+}
+

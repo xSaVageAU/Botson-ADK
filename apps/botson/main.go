@@ -140,6 +140,11 @@ func main() {
 func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	log.Println("Starting Botson Daemon...")
 
+	// Clear any pending pairings from previous runs on startup
+	if err := auth.ClearPairings(); err != nil {
+		log.Printf("Warning: failed to clear pending pairings on startup: %v", err)
+	}
+
 	sessSvc := session.InMemoryService()
 
 	// Define dynamic config getters

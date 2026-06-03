@@ -271,3 +271,11 @@ func ApprovePairing(gateway, code string) (string, error) {
 
 	return target.Username, nil
 }
+
+// ClearPairings clears all pending pairings from the storage.
+func ClearPairings() error {
+	mu.Lock()
+	defer mu.Unlock()
+	return savePairingsLocked([]PendingPairing{})
+}
+
