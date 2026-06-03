@@ -16,6 +16,7 @@ import (
 // Gateway defines the lifecycle of a message gateway (e.g. Discord, Telegram).
 type Gateway interface {
 	Name() string
+	SupportsNativeCommands() bool
 	Start(ctx context.Context, runFn func(ctx context.Context, sessionID string, query string) (string, error)) error
 	Stop() error
 }
@@ -98,7 +99,11 @@ func (gm *GatewayManager) Start(ctx context.Context) {
 		g := g
 		go func() {
 			log.Printf("Starting gateway: %s", g.Name())
-			if err := g.Start(ctx, runFn); err != nil {
+			wrappedRunFn := func(ctx context.Context, sessionKey string, query string) (string, error) {
+				ctxWithCap := commands.ContextWithNativeCommands(ctx, g.SupportsNativeCommands())
+				return runFn(ctxWithCap, sessionKey, query)
+			}
+			if err := g.Start(ctx, wrappedRunFn); err != nil {
 				log.Printf("Error running gateway %s: %v", g.Name(), err)
 			}
 		}()

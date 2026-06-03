@@ -26,6 +26,10 @@ func (dg *DiscordGateway) Name() string {
 	return "Discord"
 }
 
+func (dg *DiscordGateway) SupportsNativeCommands() bool {
+	return true
+}
+
 func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Context, sessionID string, query string) (string, error)) error {
 	if dg.token == "" || dg.token == "YOUR_DISCORD_TOKEN" {
 		log.Println("[Discord] Discord token is not configured. Gateway will not start.")

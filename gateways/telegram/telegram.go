@@ -19,6 +19,10 @@ func (tg *MockTelegramGateway) Name() string {
 	return "Telegram"
 }
 
+func (tg *MockTelegramGateway) SupportsNativeCommands() bool {
+	return false
+}
+
 func (tg *MockTelegramGateway) Start(ctx context.Context, runFn func(ctx context.Context, sessionKey string, query string) (string, error)) error {
 	log.Println("[Gateway] Telegram gateway active (mock polling started).")
 	for {

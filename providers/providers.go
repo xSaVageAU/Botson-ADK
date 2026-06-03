@@ -9,6 +9,7 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
+	"botson/internal/commands"
 	"botson/providers/gemini"
 	"botson/providers/openrouter"
 )
@@ -20,7 +21,7 @@ type sessionResetWrapper struct {
 }
 
 func (w *sessionResetWrapper) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
-	if hasNewCommand(req.Contents) {
+	if !commands.HasNativeCommands(ctx) && hasNewCommand(req.Contents) {
 		return func(yield func(*model.LLMResponse, error) bool) {
 			if w.sessionService != nil {
 				// List and delete all sessions to reset context
