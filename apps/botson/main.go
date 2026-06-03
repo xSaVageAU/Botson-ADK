@@ -95,9 +95,6 @@ func main() {
 	var args []string
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
-		case "chat", "run":
-			// Clear arguments to trigger standard console/TUI runner mode
-			args = []string{}
 		case "web":
 			// Activate the visual Web UI and REST API sublaunchers under the web launcher command
 			args = []string{"web", "webui", "api"}
@@ -223,9 +220,7 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 
 func printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  botson                  - Run console TUI chat (default)")
-	fmt.Println("  botson run              - Run console TUI chat")
-	fmt.Println("  botson chat             - Run console TUI chat")
+	fmt.Println("  botson                  - Run console TUI chat")
 	fmt.Println("  botson web              - Start interactive Web UI")
 	fmt.Println("  botson service start    - Run the background gateways daemon")
 	fmt.Println("  botson config get <key> - Print configuration value")
