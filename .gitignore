@@ -1,0 +1,10 @@
+# Ignore executables and binary outputs
+*.exe
+botson.exe
+botson-linux
+
+# Ignore configuration files containing API keys
+config.json
+
+# Ignore markdown documentation files
+*.md
