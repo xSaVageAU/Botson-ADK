@@ -16,7 +16,6 @@ import (
 // Gateway defines the lifecycle of a message gateway (e.g. Discord, Telegram).
 type Gateway interface {
 	Name() string
-	SupportsNativeCommands() bool
 	Start(ctx context.Context, runFn func(ctx context.Context, sessionID string, query string) (string, error)) error
 	Stop() error
 }
@@ -58,18 +57,10 @@ func (gm *GatewayManager) Start(ctx context.Context) {
 	log.Println("Starting background messaging gateways...")
 
 	runFn := func(ctx context.Context, sessionKey string, query string) (string, error) {
-		// 1. Process commands first
-		cmdCtx := commands.CommandContext{
-			SessionKey: sessionKey,
-		}
-		if resp, handled, err := commands.Process(ctx, cmdCtx, query); handled {
-			return resp, err
-		}
-
-		// 2. Resolve active session ID
+		// 1. Resolve active session ID
 		activeSessionID := commands.GetActiveSession(sessionKey)
 
-		// 3. Run LLM query
+		// 2. Run LLM query
 		events := gm.runner.Run(ctx, gm.agent.Name(), activeSessionID, &genai.Content{
 			Role: "user",
 			Parts: []*genai.Part{
@@ -99,11 +90,7 @@ func (gm *GatewayManager) Start(ctx context.Context) {
 		g := g
 		go func() {
 			log.Printf("Starting gateway: %s", g.Name())
-			wrappedRunFn := func(ctx context.Context, sessionKey string, query string) (string, error) {
-				ctxWithCap := commands.ContextWithNativeCommands(ctx, g.SupportsNativeCommands())
-				return runFn(ctxWithCap, sessionKey, query)
-			}
-			if err := g.Start(ctx, wrappedRunFn); err != nil {
+			if err := g.Start(ctx, runFn); err != nil {
 				log.Printf("Error running gateway %s: %v", g.Name(), err)
 			}
 		}()

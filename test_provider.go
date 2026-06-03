@@ -33,7 +33,7 @@ func main() {
 	apiKeyGetter := func() string { return mgr.Get().APIKey }
 
 	// Create model
-	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter, sessSvc)
+	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
 	if err != nil {
 		log.Fatalf("failed to create model: %v", err)
 	}

@@ -62,7 +62,7 @@ func main() {
 	}
 
 	// 4. Initialize model provider
-	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter, sessSvc)
+	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
 	if err != nil {
 		log.Fatalf("Failed to initialize LLM provider: %v. Please configure a valid API key using 'botson config set api_key <value>'.", err)
 	}
@@ -124,7 +124,7 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		return mgr.Get().APIKey
 	}
 
-	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter, sessSvc)
+	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
 	if err != nil {
 		log.Fatalf("Failed to initialize LLM provider: %v", err)
 	}
