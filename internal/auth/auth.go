@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 type PendingPairing struct {
@@ -19,19 +22,21 @@ type PendingPairing struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type Allowlist map[string][]string
-
 var (
 	mu      sync.Mutex
 	dataDir = "data"
+	db      *sql.DB
 )
 
 // SetDataDir sets the directory path for storing configuration and pairing data.
-// This is primarily used for unit test isolation.
 func SetDataDir(dir string) {
 	mu.Lock()
 	defer mu.Unlock()
 	dataDir = dir
+	if db != nil {
+		db.Close()
+		db = nil
+	}
 }
 
 func getDataDir() string {
@@ -40,50 +45,76 @@ func getDataDir() string {
 	return dataDir
 }
 
-// LoadAllowlist loads the gateway user allowlist from disk.
-func LoadAllowlist() (Allowlist, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	return loadAllowlistLocked()
-}
+func getDBLocked() (*sql.DB, error) {
+	if db != nil {
+		return db, nil
+	}
 
-func loadAllowlistLocked() (Allowlist, error) {
-	dir := dataDir
-	path := filepath.Join(dir, "allowlist.json")
-	file, err := os.Open(path)
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	dbPath := filepath.Join(dataDir, "botson.db")
+	opened, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return make(Allowlist), nil
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Schema setup
+	schema := `
+	CREATE TABLE IF NOT EXISTS allowlist (
+		gateway TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		PRIMARY KEY (gateway, user_id)
+	);`
+	if _, err := opened.Exec(schema); err != nil {
+		opened.Close()
+		return nil, fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	db = opened
+
+	// One-time migration from allowlist.json if it exists
+	jsonPath := filepath.Join(dataDir, "allowlist.json")
+	if _, err := os.Stat(jsonPath); err == nil {
+		file, err := os.Open(jsonPath)
+		if err == nil {
+			var al map[string][]string
+			if json.NewDecoder(file).Decode(&al) == nil {
+				tx, err := db.Begin()
+				if err == nil {
+					stmt, err := tx.Prepare("INSERT OR IGNORE INTO allowlist (gateway, user_id) VALUES (?, ?)")
+					if err == nil {
+						for gateway, ids := range al {
+							for _, id := range ids {
+								_, _ = stmt.Exec(strings.ToLower(gateway), id)
+							}
+						}
+						stmt.Close()
+						_ = tx.Commit()
+					} else {
+						_ = tx.Rollback()
+					}
+				}
+			}
+			file.Close()
+			_ = os.Remove(jsonPath)
 		}
-		return nil, err
 	}
-	defer file.Close()
 
-	var al Allowlist
-	if err := json.NewDecoder(file).Decode(&al); err != nil {
-		return nil, err
-	}
-	return al, nil
+	return db, nil
 }
 
-// SaveAllowlist writes the gateway user allowlist to disk.
-func SaveAllowlist(al Allowlist) error {
+// CloseDB closes the SQLite database connection if it is open.
+func CloseDB() error {
 	mu.Lock()
 	defer mu.Unlock()
-	return saveAllowlistLocked(al)
-}
-
-func saveAllowlistLocked(al Allowlist) error {
-	dir := dataDir
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if db != nil {
+		err := db.Close()
+		db = nil
 		return err
 	}
-	path := filepath.Join(dir, "allowlist.json")
-	data, err := json.MarshalIndent(al, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return nil
 }
 
 // LoadPairings loads the pending pairings list from disk.
@@ -152,18 +183,20 @@ func CheckAuth(gateway, userID, username string) (bool, string, error) {
 
 	gateway = strings.ToLower(gateway)
 
-	// 1. Check Allowlist
-	al, err := loadAllowlistLocked()
+	// 1. Check Allowlist in SQLite
+	d, err := getDBLocked()
 	if err != nil {
-		return false, "", fmt.Errorf("failed to load allowlist: %w", err)
+		return false, "", fmt.Errorf("failed to access database: %w", err)
 	}
 
-	if list, exists := al[gateway]; exists {
-		for _, id := range list {
-			if id == userID {
-				return true, "", nil
-			}
-		}
+	var count int
+	err = d.QueryRow("SELECT COUNT(*) FROM allowlist WHERE gateway = ? AND user_id = ?", gateway, userID).Scan(&count)
+	if err != nil {
+		return false, "", fmt.Errorf("failed to query allowlist: %w", err)
+	}
+
+	if count > 0 {
+		return true, "", nil
 	}
 
 	// 2. Check Pending Pairings
@@ -241,26 +274,15 @@ func ApprovePairing(gateway, code string) (string, error) {
 
 	target := pairings[matchIdx]
 
-	// 2. Load and update allowlist
-	al, err := loadAllowlistLocked()
+	// 2. Insert into SQLite allowlist
+	d, err := getDBLocked()
 	if err != nil {
-		return "", fmt.Errorf("failed to load allowlist: %w", err)
+		return "", fmt.Errorf("failed to access database: %w", err)
 	}
 
-	list := al[gateway]
-	alreadyExists := false
-	for _, id := range list {
-		if id == target.UserID {
-			alreadyExists = true
-			break
-		}
-	}
-
-	if !alreadyExists {
-		al[gateway] = append(list, target.UserID)
-		if err := saveAllowlistLocked(al); err != nil {
-			return "", fmt.Errorf("failed to save allowlist: %w", err)
-		}
+	_, err = d.Exec("INSERT OR IGNORE INTO allowlist (gateway, user_id) VALUES (?, ?)", gateway, target.UserID)
+	if err != nil {
+		return "", fmt.Errorf("failed to save user to allowlist: %w", err)
 	}
 
 	// 3. Remove pairing from pending list

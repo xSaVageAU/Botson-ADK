@@ -28,6 +28,7 @@ import (
 
 func main() {
 	ctx := context.Background()
+	defer auth.CloseDB()
 
 	// 1. Resolve default configuration and data paths
 	cfgPath, dataDir, err := config.DefaultPaths()
