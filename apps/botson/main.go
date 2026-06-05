@@ -29,12 +29,21 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// 1. Initialize configuration manager
-	mgr, err := config.NewManager("config.json")
+	// 1. Resolve default configuration and data paths
+	cfgPath, dataDir, err := config.DefaultPaths()
+	if err != nil {
+		log.Fatalf("Failed to resolve configuration paths: %v", err)
+	}
+
+	// Initialize configuration manager
+	mgr, err := config.NewManagerWithDataDir(cfgPath, dataDir)
 	if err != nil {
 		log.Fatalf("Failed to initialize configuration: %v", err)
 	}
 	cfg := mgr.Get()
+
+	// Set data directory for authorization and pairings
+	auth.SetDataDir(dataDir)
 
 	// 2. Intercept custom CLI commands (service, config, pairing)
 	if len(os.Args) > 1 {

@@ -30,6 +30,16 @@ type Manager struct {
 	stopChan chan struct{}
 }
 
+// DefaultPaths returns the default path for config.json and the data directory under ~/.botson-adk.
+func DefaultPaths() (string, string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	baseDir := filepath.Join(home, ".botson-adk")
+	return filepath.Join(baseDir, "config.json"), filepath.Join(baseDir, "data"), nil
+}
+
 // NewManager initializes the configuration manager and loads the file.
 func NewManager(path string) (*Manager, error) {
 	return NewManagerWithDataDir(path, "data")
