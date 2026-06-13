@@ -7,11 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"google.golang.org/adk/session"
+
+	_ "modernc.org/sqlite"
 )
 
 // SQLiteService implements session.Service.
@@ -20,10 +24,69 @@ type SQLiteService struct {
 }
 
 // NewSQLiteService creates a new SQLite-backed session.Service.
-func NewSQLiteService(db *sql.DB) session.Service {
+func NewSQLiteService(dataDir string) (session.Service, error) {
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create data directory: %w", err)
+	}
+
+	dbPath := filepath.Join(dataDir, "sessions.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open sessions database: %w", err)
+	}
+
+	// Set busy timeout to prevent locked database errors
+	_, _ = db.Exec("PRAGMA busy_timeout = 5000;")
+
+	// Schema setup
+	schema := `
+	CREATE TABLE IF NOT EXISTS sessions (
+		app_name TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		last_update_time TIMESTAMP NOT NULL,
+		PRIMARY KEY (app_name, user_id, session_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS session_state (
+		app_name TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		key TEXT NOT NULL,
+		value_json TEXT NOT NULL,
+		PRIMARY KEY (app_name, user_id, session_id, key)
+	);
+
+	CREATE TABLE IF NOT EXISTS session_events (
+		event_id TEXT NOT NULL PRIMARY KEY,
+		app_name TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		timestamp TIMESTAMP NOT NULL,
+		invocation_id TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		author TEXT NOT NULL,
+		event_data_json TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_session_events_lookup 
+	ON session_events (app_name, user_id, session_id, timestamp);`
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to initialize session schema: %w", err)
+	}
+
 	return &SQLiteService{
 		db: db,
+	}, nil
+}
+
+// Close closes the underlying SQLite database connection.
+func (s *SQLiteService) Close() error {
+	if s.db != nil {
+		return s.db.Close()
 	}
+	return nil
 }
 
 // Create creates a new session in the SQLite database.

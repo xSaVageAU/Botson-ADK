@@ -79,11 +79,10 @@ func main() {
 	}
 
 	// 3. Create the session service
-	db, err := auth.GetDB()
+	sessSvc, err := sqlitesession.NewSQLiteService(dataDir)
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatalf("Failed to initialize session service: %v", err)
 	}
-	sessSvc := sqlitesession.NewSQLiteService(db)
 
 	// Define dynamic config getters
 	modelGetter := func() string {
@@ -159,11 +158,15 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Printf("Warning: failed to clear pending pairings on startup: %v", err)
 	}
 
-	db, err := auth.GetDB()
+	_, dataDir, err := config.DefaultPaths()
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Fatalf("Failed to resolve configuration paths: %v", err)
 	}
-	sessSvc := sqlitesession.NewSQLiteService(db)
+
+	sessSvc, err := sqlitesession.NewSQLiteService(dataDir)
+	if err != nil {
+		log.Fatalf("Failed to initialize session service: %v", err)
+	}
 
 	// Define dynamic config getters
 	modelGetter := func() string {

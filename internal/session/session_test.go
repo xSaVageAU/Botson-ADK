@@ -8,21 +8,20 @@ import (
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 
-	"botson/internal/auth"
 	sqlitesession "botson/internal/session"
 )
 
 func TestSQLiteSessionService(t *testing.T) {
-	// Set database to a temporary directory
-	auth.SetDataDir(t.TempDir())
-	defer auth.CloseDB()
-
-	db, err := auth.GetDB()
+	tmpDir := t.TempDir()
+	svc, err := sqlitesession.NewSQLiteService(tmpDir)
 	if err != nil {
-		t.Fatalf("Failed to initialize test SQLite DB: %v", err)
+		t.Fatalf("Failed to initialize session service: %v", err)
 	}
-
-	svc := sqlitesession.NewSQLiteService(db)
+	defer func() {
+		if closer, ok := svc.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+	}()
 	ctx := context.Background()
 
 	appName := "test-app"
