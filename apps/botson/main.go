@@ -11,7 +11,6 @@ import (
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/cmd/launcher"
 	"google.golang.org/adk/cmd/launcher/full"
-	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
 
 	botsonAgent "botson/agent"
@@ -22,6 +21,7 @@ import (
 	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/configtool"
+	sqlitesession "botson/internal/session"
 	"botson/tools/time"
 	"strings"
 )
@@ -79,7 +79,11 @@ func main() {
 	}
 
 	// 3. Create the session service
-	sessSvc := session.InMemoryService()
+	db, err := auth.GetDB()
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	sessSvc := sqlitesession.NewSQLiteService(db)
 
 	// Define dynamic config getters
 	modelGetter := func() string {
@@ -155,7 +159,11 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Printf("Warning: failed to clear pending pairings on startup: %v", err)
 	}
 
-	sessSvc := session.InMemoryService()
+	db, err := auth.GetDB()
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	sessSvc := sqlitesession.NewSQLiteService(db)
 
 	// Define dynamic config getters
 	modelGetter := func() string {

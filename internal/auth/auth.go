@@ -60,13 +60,48 @@ func getDBLocked() (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Set busy timeout to prevent locked database errors
+	_, _ = opened.Exec("PRAGMA busy_timeout = 5000;")
+
 	// Schema setup
 	schema := `
 	CREATE TABLE IF NOT EXISTS allowlist (
 		gateway TEXT NOT NULL,
 		user_id TEXT NOT NULL,
 		PRIMARY KEY (gateway, user_id)
-	);`
+	);
+	
+	CREATE TABLE IF NOT EXISTS sessions (
+		app_name TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		last_update_time TIMESTAMP NOT NULL,
+		PRIMARY KEY (app_name, user_id, session_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS session_state (
+		app_name TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		key TEXT NOT NULL,
+		value_json TEXT NOT NULL,
+		PRIMARY KEY (app_name, user_id, session_id, key)
+	);
+
+	CREATE TABLE IF NOT EXISTS session_events (
+		event_id TEXT NOT NULL PRIMARY KEY,
+		app_name TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		timestamp TIMESTAMP NOT NULL,
+		invocation_id TEXT NOT NULL,
+		branch TEXT NOT NULL,
+		author TEXT NOT NULL,
+		event_data_json TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_session_events_lookup 
+	ON session_events (app_name, user_id, session_id, timestamp);`
 	if _, err := opened.Exec(schema); err != nil {
 		opened.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
@@ -103,6 +138,13 @@ func getDBLocked() (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// GetDB retrieves the active SQLite database connection.
+func GetDB() (*sql.DB, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	return getDBLocked()
 }
 
 // CloseDB closes the SQLite database connection if it is open.
