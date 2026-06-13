@@ -7,15 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"google.golang.org/adk/session"
 
-	_ "modernc.org/sqlite"
+	"botson/internal/sqliteutil"
 )
 
 // SQLiteService implements session.Service.
@@ -25,18 +23,10 @@ type SQLiteService struct {
 
 // NewSQLiteService creates a new SQLite-backed session.Service.
 func NewSQLiteService(dataDir string) (session.Service, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %w", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "sessions.db")
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sqliteutil.OpenDB(dataDir, "sessions.db")
 	if err != nil {
-		return nil, fmt.Errorf("failed to open sessions database: %w", err)
+		return nil, err
 	}
-
-	// Set busy timeout to prevent locked database errors
-	_, _ = db.Exec("PRAGMA busy_timeout = 5000;")
 
 	// Schema setup
 	schema := `

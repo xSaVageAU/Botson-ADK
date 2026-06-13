@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"botson/internal/sqliteutil"
 )
 
 type PendingPairing struct {
@@ -50,18 +50,10 @@ func getDBLocked() (*sql.DB, error) {
 		return db, nil
 	}
 
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data directory: %w", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "core.db")
-	opened, err := sql.Open("sqlite", dbPath)
+	opened, err := sqliteutil.OpenDB(dataDir, "core.db")
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, err
 	}
-
-	// Set busy timeout to prevent locked database errors
-	_, _ = opened.Exec("PRAGMA busy_timeout = 5000;")
 
 	// Schema setup
 	schema := `
