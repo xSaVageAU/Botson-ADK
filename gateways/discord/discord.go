@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -77,11 +79,11 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 		if isDM {
 			authed, code, err := auth.CheckAuth("discord", m.Author.ID, m.Author.Username)
 			if err != nil {
-				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error checking auth: %v", err))
+				sendErrorEmbed(s, m.ChannelID, fmt.Sprintf("Error checking authentication: %v", err))
 				return
 			}
 			if !authed {
-				s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Hello! I don't recognize you yet. To enable chatting in this session, please provide your pairing code: `%s` to the bot owner and ask them to run:\n`botson pairing approve discord %s`", code, code))
+				sendAuthEmbed(s, m.ChannelID, code)
 				return
 			}
 		}
@@ -99,21 +101,33 @@ func (dg *DiscordGateway) Start(ctx context.Context, runFn func(ctx context.Cont
 		// Use platform-prefixed channel key to identify the session
 		sessionKey := "discord:" + m.ChannelID
 
-		// Trigger typing indicator
-		s.ChannelTyping(m.ChannelID)
+		// Add loading reaction and start typing loop
+		addReaction(s, m.ChannelID, m.ID, "⏳")
+		stopTyping := startTypingLoop(s, m.ChannelID)
 
 		// Run query
 		response, err := runFn(ctx, sessionKey, prompt)
+		stopTyping()
+
 		if err != nil {
-			s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Error running query: %v", err))
+			removeReaction(s, m.ChannelID, m.ID, "⏳")
+			addReaction(s, m.ChannelID, m.ID, "❌")
+			sendErrorEmbed(s, m.ChannelID, err.Error())
 			return
 		}
+
+		removeReaction(s, m.ChannelID, m.ID, "⏳")
+		addReaction(s, m.ChannelID, m.ID, "✅")
 
 		if response == "" {
 			response = "(empty response)"
 		}
 
-		s.ChannelMessageSend(m.ChannelID, response)
+		// Split response to fit Discord's 2,000-character message limit
+		chunks := splitMessage(response, 2000)
+		for _, chunk := range chunks {
+			_, _ = s.ChannelMessageSend(m.ChannelID, chunk)
+		}
 	})
 
 	// Add event handler for native slash commands
@@ -208,4 +222,118 @@ func (dg *DiscordGateway) Stop() error {
 		return dg.session.Close()
 	}
 	return nil
+}
+
+// startTypingLoop starts a goroutine to continuously trigger the typing indicator.
+// Returns a function to cancel the typing loop.
+func startTypingLoop(s *discordgo.Session, channelID string) func() {
+	stop := make(chan struct{})
+	// Trigger typing immediately
+	_ = s.ChannelTyping(channelID)
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_ = s.ChannelTyping(channelID)
+			case <-stop:
+				return
+			}
+		}
+	}()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			close(stop)
+		})
+	}
+}
+
+// splitMessage splits long text responses into chunks of <= 2000 characters.
+func splitMessage(content string, limit int) []string {
+	if len(content) <= limit {
+		return []string{content}
+	}
+
+	var chunks []string
+	runes := []rune(content)
+	for len(runes) > 0 {
+		if len(runes) <= limit {
+			chunks = append(chunks, string(runes))
+			break
+		}
+
+		splitIdx := limit
+
+		// Try to split at a double-newline paragraph boundary
+		lastParagraph := strings.LastIndex(string(runes[:limit]), "\n\n")
+		if lastParagraph > limit/2 {
+			splitIdx = lastParagraph + 2
+		} else {
+			// Try to split at a single newline
+			lastNewline := strings.LastIndex(string(runes[:limit]), "\n")
+			if lastNewline > limit/2 {
+				splitIdx = lastNewline + 1
+			} else {
+				// Try to split at a space
+				lastSpace := strings.LastIndex(string(runes[:limit]), " ")
+				if lastSpace > limit/2 {
+					splitIdx = lastSpace + 1
+				}
+			}
+		}
+
+		chunks = append(chunks, string(runes[:splitIdx]))
+		runes = runes[splitIdx:]
+	}
+
+	return chunks
+}
+
+// addReaction adds an emoji reaction to a user message.
+func addReaction(s *discordgo.Session, channelID, messageID, emoji string) {
+	_ = s.MessageReactionAdd(channelID, messageID, emoji)
+}
+
+// removeReaction removes an emoji reaction added by the bot.
+func removeReaction(s *discordgo.Session, channelID, messageID, emoji string) {
+	_ = s.MessageReactionRemove(channelID, messageID, emoji, "@me")
+}
+
+// sendAuthEmbed sends a beautiful rich Embed for pairing code verification.
+func sendAuthEmbed(s *discordgo.Session, channelID, pairingCode string) {
+	embed := &discordgo.MessageEmbed{
+		Title:       "🔒 Authentication Required",
+		Description: "I don't recognize your account yet. To enable direct chatting, please ask the bot owner to approve your pairing request.",
+		Color:       0x3498db, // Premium blue
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Pairing Code",
+				Value:  fmt.Sprintf("`%s`", pairingCode),
+				Inline: true,
+			},
+			{
+				Name:   "Approval Command",
+				Value:  fmt.Sprintf("`botson pairing approve discord %s`", pairingCode),
+				Inline: false,
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Run the command on the host machine running Botson.",
+		},
+	}
+	_, _ = s.ChannelMessageSendEmbed(channelID, embed)
+}
+
+// sendErrorEmbed sends a stylized rich Embed for LLM or command errors.
+func sendErrorEmbed(s *discordgo.Session, channelID, errText string) {
+	embed := &discordgo.MessageEmbed{
+		Title:       "❌ Error",
+		Description: fmt.Sprintf("An error occurred while executing your request:\n```plain\n%s\n```", errText),
+		Color:       0xe74c3c, // Premium red
+	}
+	_, _ = s.ChannelMessageSendEmbed(channelID, embed)
 }
