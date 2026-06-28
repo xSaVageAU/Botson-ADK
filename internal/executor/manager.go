@@ -1,0 +1,205 @@
+package executor
+
+import (
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
+)
+
+// EnvInfo describes a live execution environment.
+type EnvInfo struct {
+	ID     string `json:"id"`
+	Type   string `json:"type"` // "host" or "sandbox"
+	Active bool   `json:"active"`
+}
+
+// Manager coordinates target execution environments (Host vs. Sandboxes).
+type Manager struct {
+	mu           sync.RWMutex
+	cacheDir     string
+	netMode      sandbox.NetworkMode
+	activeTarget sandbox.Target
+	sandboxes    map[string]*sandbox.Sandbox
+}
+
+// NewManager initializes a new environment manager.
+func NewManager(cacheDir string, netMode string) *Manager {
+	nm := sandbox.NetworkMode(netMode)
+	if nm == "" {
+		nm = sandbox.NetworkDefault
+	}
+	return &Manager{
+		cacheDir:     cacheDir,
+		netMode:      nm,
+		activeTarget: sandbox.NewHostTarget(),
+		sandboxes:    make(map[string]*sandbox.Sandbox),
+	}
+}
+
+// GetActiveTarget returns the currently active target environment.
+func (m *Manager) GetActiveTarget() sandbox.Target {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeTarget
+}
+
+// GetActiveID returns the ID of the currently active environment.
+func (m *Manager) GetActiveID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeTarget.EnvID()
+}
+
+// GetActiveType returns the type of the active target ("host" or "sandbox").
+func (m *Manager) GetActiveType() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeTarget.Type()
+}
+
+// Switch changes the active environment. Use "host" to switch back to host mode.
+func (m *Manager) Switch(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if id == "host" {
+		m.activeTarget = sandbox.NewHostTarget()
+		return nil
+	}
+
+	sb, exists := m.sandboxes[id]
+	if !exists {
+		return fmt.Errorf("no sandbox %q found — use list_envs to see active environments", id)
+	}
+
+	m.activeTarget = sb
+	return nil
+}
+
+// Spawn creates a new isolated sandbox, starts it, and switches to it.
+func (m *Manager) Spawn(id, templateName string) (sandbox.Target, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.sandboxes[id]; exists {
+		return nil, fmt.Errorf("sandbox %q already exists — use switch_env to activate it", id)
+	}
+
+	rm := sandbox.NewRootfsManager(m.cacheDir)
+	sb, err := sandbox.NewSessionSandbox(rm, id, templateName, true)
+	if err != nil {
+		return nil, fmt.Errorf("creating sandbox %q: %w", id, err)
+	}
+
+	if err := sb.StartDaemon(m.netMode); err != nil {
+		return nil, fmt.Errorf("starting sandbox %q daemon: %w", id, err)
+	}
+
+	m.sandboxes[id] = sb
+	m.activeTarget = sb
+	return sb, nil
+}
+
+// Destroy stops and deletes a sandbox target by ID.
+func (m *Manager) Destroy(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sb, exists := m.sandboxes[id]
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", id)
+	}
+
+	err := sb.Close()
+	delete(m.sandboxes, id)
+
+	if m.activeTarget.EnvID() == id {
+		m.activeTarget = sandbox.NewHostTarget()
+	}
+
+	return err
+}
+
+// Reset wipes a sandbox's workspace back to template rootfs.
+func (m *Manager) Reset(id string) (sandbox.Target, error) {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+
+	if !exists {
+		return nil, fmt.Errorf("sandbox %q not found", id)
+	}
+
+	if err := sb.ResetWorkspace(); err != nil {
+		return nil, fmt.Errorf("resetting sandbox %q: %w", id, err)
+	}
+
+	return sb, nil
+}
+
+// List returns all active environments.
+func (m *Manager) List() []EnvInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	activeID := m.activeTarget.EnvID()
+	list := []EnvInfo{
+		{
+			ID:     "host",
+			Type:   "host",
+			Active: activeID == "host",
+		},
+	}
+
+	for id := range m.sandboxes {
+		list = append(list, EnvInfo{
+			ID:     id,
+			Type:   "sandbox",
+			Active: id == activeID,
+		})
+	}
+
+	return list
+}
+
+// SaveTemplate snapshots a sandbox's rootfs state to a named template.
+func (m *Manager) SaveTemplate(sandboxID, templateName string, overwrite bool) error {
+	m.mu.RLock()
+	sb, exists := m.sandboxes[sandboxID]
+	m.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", sandboxID)
+	}
+
+	rm := sandbox.NewRootfsManager(m.cacheDir)
+	return rm.SaveAsTemplate(sb.RootfsPath, templateName, overwrite)
+}
+
+// ListTemplates returns the names of all cached templates.
+func (m *Manager) ListTemplates() ([]string, error) {
+	rm := sandbox.NewRootfsManager(m.cacheDir)
+	return rm.ListCustomTemplates()
+}
+
+// Close closes all active sandboxes.
+func (m *Manager) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var errors []string
+	for id, sb := range m.sandboxes {
+		if err := sb.Close(); err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %v", id, err))
+		}
+	}
+	m.sandboxes = make(map[string]*sandbox.Sandbox)
+	m.activeTarget = sandbox.NewHostTarget()
+
+	if len(errors) > 0 {
+		return fmt.Errorf("failed to close some sandboxes: %s", strings.Join(errors, "; "))
+	}
+	return nil
+}

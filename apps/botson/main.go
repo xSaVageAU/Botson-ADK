@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"google.golang.org/adk/agent"
@@ -21,6 +22,7 @@ import (
 	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/configtool"
+	botsonExecutor "botson/internal/executor"
 	sqlitesession "botson/internal/session"
 	"botson/tools/time"
 	"strings"
@@ -75,6 +77,12 @@ func main() {
 			}
 			printUsage()
 			return
+		case "wslsetup":
+			err := botsonExecutor.SetupWSL(dataDir)
+			if err != nil {
+				log.Fatalf("Failed to setup WSL sandbox environment: %v", err)
+			}
+			return
 		}
 	}
 
@@ -119,7 +127,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create get_time tool: %v", err)
 	}
+
+	// Initialize Executor Manager
+	execMgr := botsonExecutor.NewManager(filepath.Join(dataDir, "cache"), "")
+	defer execMgr.Close()
+
+	execTools, err := botsonExecutor.MakeAllTools(execMgr)
+	if err != nil {
+		log.Fatalf("Failed to create executor tools: %v", err)
+	}
+
 	toolsList := []tool.Tool{readTool, writeTool, timeTool}
+	toolsList = append(toolsList, execTools...)
 
 	// 6. Create the agent
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)
@@ -189,6 +208,7 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Fatalf("Failed to initialize LLM provider: %v", err)
 	}
 
+	// 5. Initialize configuration tools
 	readTool, err := configtool.MakeReadConfigTool(mgr)
 	if err != nil {
 		log.Fatalf("Failed to create read_config tool: %v", err)
@@ -201,7 +221,18 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	if err != nil {
 		log.Fatalf("Failed to create get_time tool: %v", err)
 	}
+
+	// Initialize Executor Manager
+	execMgr := botsonExecutor.NewManager(filepath.Join(dataDir, "cache"), "")
+	defer execMgr.Close()
+
+	execTools, err := botsonExecutor.MakeAllTools(execMgr)
+	if err != nil {
+		log.Fatalf("Failed to create executor tools: %v", err)
+	}
+
 	toolsList := []tool.Tool{readTool, writeTool, timeTool}
+	toolsList = append(toolsList, execTools...)
 
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)
 	if err != nil {
@@ -346,4 +377,5 @@ func printUsage() {
 	fmt.Println("  botson config get <key> - Print configuration value")
 	fmt.Println("  botson config set <key> <val> - Set configuration value")
 	fmt.Println("  botson pairing approve <gateway> <code> - Approve a pending pairing request")
+	fmt.Println("  botson wslsetup         - Automatically install and provision isolated WSL sandbox")
 }
