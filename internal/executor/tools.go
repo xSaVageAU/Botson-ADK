@@ -129,8 +129,10 @@ func MakeReadFileTool(mgr *Manager) (tool.Tool, error) {
 // ─── TOOL: spawn_sandbox ───────────────────────────────────────────────────────
 
 type SpawnSandboxArgs struct {
-	ID       string `json:"id,omitempty"`
-	Template string `json:"template,omitempty"`
+	ID        string `json:"id,omitempty"`
+	Template  string `json:"template,omitempty"`
+	Persist   *bool  `json:"persist,omitempty"`
+	AutoStart *bool  `json:"auto_start,omitempty"`
 }
 
 func MakeSpawnSandboxTool(mgr *Manager) (tool.Tool, error) {
@@ -138,18 +140,22 @@ func MakeSpawnSandboxTool(mgr *Manager) (tool.Tool, error) {
 		Name:        "spawn_sandbox",
 		Description: "Spawn a new isolated gVisor sandbox environment and switch the active executor to it. Returns the sandbox ID.",
 	}, func(ctx tool.Context, args SpawnSandboxArgs) (string, error) {
-		// Sandboxing is supported on non-Windows target hosts
-		if runtime.GOOS == "windows" {
-			return "", fmt.Errorf("sandbox mode is not available on Windows hosts (unsupported platform)")
-		}
-
 		id := strings.TrimSpace(args.ID)
 		if id == "" {
 			// Generate fallback ID
 			id = fmt.Sprintf("sb-%d", os.Getpid())
 		}
 
-		_, err := mgr.Spawn(id, args.Template)
+		persist := true
+		if args.Persist != nil {
+			persist = *args.Persist
+		}
+		autoStart := false
+		if args.AutoStart != nil {
+			autoStart = *args.AutoStart
+		}
+
+		_, err := mgr.Spawn(id, args.Template, persist, autoStart)
 		if err != nil {
 			return "", fmt.Errorf("failed to spawn sandbox: %w", err)
 		}
@@ -159,6 +165,44 @@ func MakeSpawnSandboxTool(mgr *Manager) (tool.Tool, error) {
 			msg += fmt.Sprintf(" (template: %s)", args.Template)
 		}
 		return msg, nil
+	})
+}
+
+// ─── TOOL: configure_sandbox ──────────────────────────────────────────────────
+
+type ConfigureSandboxArgs struct {
+	ID        string `json:"id"`
+	Persist   *bool  `json:"persist,omitempty"`
+	AutoStart *bool  `json:"auto_start,omitempty"`
+}
+
+func MakeConfigureSandboxTool(mgr *Manager) (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "configure_sandbox",
+		Description: "Configure settings of an existing sandbox (such as persistence or auto-start on agent startup).",
+	}, func(ctx tool.Context, args ConfigureSandboxArgs) (string, error) {
+		id := strings.TrimSpace(args.ID)
+		if id == "" {
+			return "", fmt.Errorf("id cannot be empty")
+		}
+
+		err := mgr.Configure(id, args.Persist, args.AutoStart)
+		if err != nil {
+			return "", fmt.Errorf("failed to configure sandbox: %w", err)
+		}
+
+		var changes []string
+		if args.Persist != nil {
+			changes = append(changes, fmt.Sprintf("persist=%t", *args.Persist))
+		}
+		if args.AutoStart != nil {
+			changes = append(changes, fmt.Sprintf("auto_start=%t", *args.AutoStart))
+		}
+
+		if len(changes) == 0 {
+			return fmt.Sprintf("✅ Sandbox %q configuration unchanged.", id), nil
+		}
+		return fmt.Sprintf("✅ Sandbox %q configured successfully (%s).", id, strings.Join(changes, ", ")), nil
 	})
 }
 
@@ -353,12 +397,17 @@ func MakeAllTools(mgr *Manager) ([]tool.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
+	configureTool, err := MakeConfigureSandboxTool(mgr)
+	if err != nil {
+		return nil, err
+	}
 
 	return []tool.Tool{
 		execTool,
 		writeTool,
 		readTool,
 		spawnTool,
+		configureTool,
 		switchTool,
 		destroyTool,
 		resetTool,

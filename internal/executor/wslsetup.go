@@ -102,7 +102,7 @@ func SetupWSL(dataDir string) error {
 	}
 
 	// Translate local Windows runsc binary path to WSL path
-	wslPathCmd := exec.Command("wsl", "-d", distroName, "wslpath", "-u", runscBin)
+	wslPathCmd := exec.Command("wsl", "-d", distroName, "wslpath", "-u", filepath.ToSlash(runscBin))
 	var wslPathBytes bytes.Buffer
 	wslPathCmd.Stdout = &wslPathBytes
 	if err := wslPathCmd.Run(); err != nil {

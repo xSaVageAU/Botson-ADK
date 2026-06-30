@@ -18,12 +18,18 @@ func TestManagerHostDefaults(t *testing.T) {
 	}
 
 	envs := mgr.List()
-	if len(envs) != 1 {
-		t.Fatalf("Expected 1 environment listed initially, got %d", len(envs))
+	var hostEnv *EnvInfo
+	for i := range envs {
+		if envs[i].ID == "host" {
+			hostEnv = &envs[i]
+			break
+		}
 	}
-
-	if envs[0].ID != "host" || envs[0].Type != "host" || !envs[0].Active {
-		t.Errorf("Expected host environment to be active, got %+v", envs[0])
+	if hostEnv == nil {
+		t.Fatal("Expected host environment to be listed")
+	}
+	if hostEnv.Type != "host" || !hostEnv.Active {
+		t.Errorf("Expected host environment to be active, got %+v", hostEnv)
 	}
 }
 
@@ -59,4 +65,29 @@ func TestManagerSwitchAndValidation(t *testing.T) {
 	if err := mgr.Switch("non-existent-sandbox"); err == nil {
 		t.Error("Expected error switching to non-existent sandbox, got nil")
 	}
+}
+
+func TestManagerSpawnAndConfigure(t *testing.T) {
+	mgr := NewManager("test_cache", "default")
+	defer mgr.Close()
+
+	// Spawn ephemeral sandbox (persist=false, autoStart=false)
+	sb, err := mgr.Spawn("test-ephemeral", "", false, false)
+	if err != nil {
+		t.Fatalf("Failed to spawn ephemeral sandbox: %v", err)
+	}
+
+	if sb.EnvID() != "test-ephemeral" {
+		t.Errorf("Expected sandbox ID 'test-ephemeral', got %q", sb.EnvID())
+	}
+
+	// Verify configure settings updates metadata in-memory
+	err = mgr.Configure("test-ephemeral", pointerTo(true), pointerTo(true))
+	if err != nil {
+		t.Fatalf("Failed to configure sandbox: %v", err)
+	}
+}
+
+func pointerTo[T any](v T) *T {
+	return &v
 }

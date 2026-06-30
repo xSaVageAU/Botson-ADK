@@ -13,3 +13,6 @@ config.json
 data/
 config.json.old
 *.exe~
+
+# Ignore local test cache for executor
+internal/executor/test_cache/

@@ -2,6 +2,8 @@ package executor
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -30,12 +32,24 @@ func NewManager(cacheDir string, netMode string) *Manager {
 	if nm == "" {
 		nm = sandbox.NetworkDefault
 	}
-	return &Manager{
+	mgr := &Manager{
 		cacheDir:     cacheDir,
 		netMode:      nm,
 		activeTarget: sandbox.NewHostTarget(),
 		sandboxes:    make(map[string]*sandbox.Sandbox),
 	}
+
+	// Load existing persistent sandboxes
+	rm := sandbox.NewRootfsManager(cacheDir)
+	if sbs, err := sandbox.LoadPersistentSessions(rm); err == nil {
+		for _, sb := range sbs {
+			mgr.sandboxes[sb.ID] = sb
+			if sb.AutoStart {
+				_ = sb.StartDaemon(mgr.netMode)
+			}
+		}
+	}
+	return mgr
 }
 
 // GetActiveTarget returns the currently active target environment.
@@ -79,7 +93,7 @@ func (m *Manager) Switch(id string) error {
 }
 
 // Spawn creates a new isolated sandbox, starts it, and switches to it.
-func (m *Manager) Spawn(id, templateName string) (sandbox.Target, error) {
+func (m *Manager) Spawn(id, templateName string, persist, autoStart bool) (sandbox.Target, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -88,10 +102,11 @@ func (m *Manager) Spawn(id, templateName string) (sandbox.Target, error) {
 	}
 
 	rm := sandbox.NewRootfsManager(m.cacheDir)
-	sb, err := sandbox.NewSessionSandbox(rm, id, templateName, true)
+	sb, err := sandbox.NewSessionSandbox(rm, id, templateName, persist)
 	if err != nil {
 		return nil, fmt.Errorf("creating sandbox %q: %w", id, err)
 	}
+	sb.AutoStart = autoStart
 
 	if err := sb.StartDaemon(m.netMode); err != nil {
 		return nil, fmt.Errorf("starting sandbox %q daemon: %w", id, err)
@@ -119,7 +134,31 @@ func (m *Manager) Destroy(id string) error {
 		m.activeTarget = sandbox.NewHostTarget()
 	}
 
+	// Delete the persistent session folder from disk
+	sessionDir := filepath.Dir(sb.RootfsPath)
+	_ = os.RemoveAll(sessionDir)
+
 	return err
+}
+
+// Configure updates the settings of an existing sandbox session.
+func (m *Manager) Configure(id string, persist *bool, autoStart *bool) error {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", id)
+	}
+
+	if persist != nil {
+		sb.Persist = *persist
+	}
+	if autoStart != nil {
+		sb.AutoStart = *autoStart
+	}
+
+	return sb.SaveMetadata()
 }
 
 // Reset wipes a sandbox's workspace back to template rootfs.
