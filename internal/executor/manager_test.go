@@ -3,6 +3,8 @@ package executor
 import (
 	"strings"
 	"testing"
+
+	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
 )
 
 func TestManagerHostDefaults(t *testing.T) {
@@ -76,6 +78,9 @@ func TestManagerSpawnAndConfigure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to spawn ephemeral sandbox: %v", err)
 	}
+	defer func() {
+		_ = mgr.Destroy("test-ephemeral")
+	}()
 
 	if sb.EnvID() != "test-ephemeral" {
 		t.Errorf("Expected sandbox ID 'test-ephemeral', got %q", sb.EnvID())
@@ -90,4 +95,51 @@ func TestManagerSpawnAndConfigure(t *testing.T) {
 
 func pointerTo[T any](v T) *T {
 	return &v
+}
+
+func TestManagerServiceRegistration(t *testing.T) {
+	mgr := NewManager("test_cache", "default")
+	defer mgr.Close()
+
+	// Spawn a persistent sandbox
+	_, err := mgr.Spawn("test-svc-box", "", true, false)
+	if err != nil {
+		t.Fatalf("Failed to spawn sandbox: %v", err)
+	}
+	defer func() {
+		_ = mgr.Destroy("test-svc-box")
+	}()
+
+	svc := sandbox.Service{
+		Name:      "web",
+		Command:   "python3 -m http.server 8080",
+		Cwd:       "/workspace",
+		AutoStart: true,
+	}
+
+	// Register service
+	err = mgr.RegisterService("test-svc-box", svc)
+	if err != nil {
+		t.Fatalf("Failed to register service: %v", err)
+	}
+
+	// Retrieve sandbox to check
+	sb, exists := mgr.sandboxes["test-svc-box"]
+	if !exists {
+		t.Fatal("Sandbox test-svc-box not found in manager map")
+	}
+
+	if len(sb.Services) != 1 || sb.Services[0].Name != "web" || sb.Services[0].Command != "python3 -m http.server 8080" {
+		t.Errorf("Service not registered correctly: %+v", sb.Services)
+	}
+
+	// Deregister service
+	err = mgr.DeregisterService("test-svc-box", "web")
+	if err != nil {
+		t.Fatalf("Failed to deregister service: %v", err)
+	}
+
+	if len(sb.Services) != 0 {
+		t.Errorf("Expected 0 services after deregistration, got %d", len(sb.Services))
+	}
 }

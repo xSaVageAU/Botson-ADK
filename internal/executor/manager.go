@@ -45,7 +45,9 @@ func NewManager(cacheDir string, netMode string) *Manager {
 		for _, sb := range sbs {
 			mgr.sandboxes[sb.ID] = sb
 			if sb.AutoStart {
-				_ = sb.StartDaemon(mgr.netMode)
+				if err := sb.StartDaemon(mgr.netMode); err == nil {
+					_ = sb.StartAllAutoStartServices()
+				}
 			}
 		}
 	}
@@ -158,6 +160,61 @@ func (m *Manager) Configure(id string, persist *bool, autoStart *bool) error {
 		sb.AutoStart = *autoStart
 	}
 
+	return sb.SaveMetadata()
+}
+
+// RegisterService adds or updates a service definition inside an existing sandbox.
+func (m *Manager) RegisterService(id string, svc sandbox.Service) error {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", id)
+	}
+
+	found := false
+	for i := range sb.Services {
+		if sb.Services[i].Name == svc.Name {
+			sb.Services[i] = svc
+			found = true
+			break
+		}
+	}
+	if !found {
+		sb.Services = append(sb.Services, svc)
+	}
+
+	return sb.SaveMetadata()
+}
+
+// DeregisterService removes a service definition from a sandbox.
+func (m *Manager) DeregisterService(id, serviceName string) error {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", id)
+	}
+
+	// Stop it first if it's running
+	_ = sb.StopService(serviceName)
+
+	found := false
+	var newSvcs []sandbox.Service
+	for i := range sb.Services {
+		if sb.Services[i].Name == serviceName {
+			found = true
+			continue
+		}
+		newSvcs = append(newSvcs, sb.Services[i])
+	}
+	if !found {
+		return fmt.Errorf("service %q not registered in sandbox %q", serviceName, id)
+	}
+
+	sb.Services = newSvcs
 	return sb.SaveMetadata()
 }
 

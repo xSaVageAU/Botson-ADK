@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
 )
@@ -206,6 +207,189 @@ func MakeConfigureSandboxTool(mgr *Manager) (tool.Tool, error) {
 	})
 }
 
+// ─── TOOL: register_service ───────────────────────────────────────────────────
+
+type RegisterServiceArgs struct {
+	SandboxID string `json:"sandbox_id"`
+	Name      string `json:"name"`
+	Command   string `json:"command"`
+	Cwd       string `json:"cwd,omitempty"`
+	AutoStart bool   `json:"auto_start,omitempty"`
+}
+
+func MakeRegisterServiceTool(mgr *Manager) (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "register_service",
+		Description: "Register or update a persistent background service (e.g. webserver) inside a sandbox.",
+	}, func(ctx tool.Context, args RegisterServiceArgs) (string, error) {
+		id := strings.TrimSpace(args.SandboxID)
+		name := strings.TrimSpace(args.Name)
+		cmd := strings.TrimSpace(args.Command)
+		if id == "" || name == "" || cmd == "" {
+			return "", fmt.Errorf("sandbox_id, name, and command cannot be empty")
+		}
+
+		svc := sandbox.Service{
+			Name:      name,
+			Command:   cmd,
+			Cwd:       strings.TrimSpace(args.Cwd),
+			AutoStart: args.AutoStart,
+		}
+
+		err := mgr.RegisterService(id, svc)
+		if err != nil {
+			return "", fmt.Errorf("failed to register service: %w", err)
+		}
+
+		return fmt.Sprintf("✅ Service %q registered successfully in sandbox %q.", name, id), nil
+	})
+}
+
+// ─── TOOL: deregister_service ─────────────────────────────────────────────────
+
+type DeregisterServiceArgs struct {
+	SandboxID   string `json:"sandbox_id"`
+	ServiceName string `json:"service_name"`
+}
+
+func MakeDeregisterServiceTool(mgr *Manager) (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "deregister_service",
+		Description: "Remove a service definition from a sandbox, stopping it first if it is currently running.",
+	}, func(ctx tool.Context, args DeregisterServiceArgs) (string, error) {
+		id := strings.TrimSpace(args.SandboxID)
+		name := strings.TrimSpace(args.ServiceName)
+		if id == "" || name == "" {
+			return "", fmt.Errorf("sandbox_id and service_name cannot be empty")
+		}
+
+		err := mgr.DeregisterService(id, name)
+		if err != nil {
+			return "", fmt.Errorf("failed to deregister service: %w", err)
+		}
+
+		return fmt.Sprintf("✅ Service %q deregistered and cleaned up from sandbox %q.", name, id), nil
+	})
+}
+
+// ─── TOOL: start_service ──────────────────────────────────────────────────────
+
+type StartServiceArgs struct {
+	SandboxID   string `json:"sandbox_id"`
+	ServiceName string `json:"service_name"`
+}
+
+func MakeStartServiceTool(mgr *Manager) (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "start_service",
+		Description: "Manually start a registered background service inside a sandbox.",
+	}, func(ctx tool.Context, args StartServiceArgs) (string, error) {
+		id := strings.TrimSpace(args.SandboxID)
+		name := strings.TrimSpace(args.ServiceName)
+		if id == "" || name == "" {
+			return "", fmt.Errorf("sandbox_id and service_name cannot be empty")
+		}
+
+		mgr.mu.Lock()
+		sb, exists := mgr.sandboxes[id]
+		mgr.mu.Unlock()
+
+		if !exists {
+			return "", fmt.Errorf("sandbox %q not found", id)
+		}
+
+		err := sb.StartService(name)
+		if err != nil {
+			return "", fmt.Errorf("failed to start service: %w", err)
+		}
+
+		return fmt.Sprintf("✅ Service %q started in the background inside sandbox %q. Logs are written to the host at sessions/%s/logs/%s.log", name, id, id, name), nil
+	})
+}
+
+// ─── TOOL: stop_service ───────────────────────────────────────────────────────
+
+type StopServiceArgs struct {
+	SandboxID   string `json:"sandbox_id"`
+	ServiceName string `json:"service_name"`
+}
+
+func MakeStopServiceTool(mgr *Manager) (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "stop_service",
+		Description: "Stop a running background service inside a sandbox.",
+	}, func(ctx tool.Context, args StopServiceArgs) (string, error) {
+		id := strings.TrimSpace(args.SandboxID)
+		name := strings.TrimSpace(args.ServiceName)
+		if id == "" || name == "" {
+			return "", fmt.Errorf("sandbox_id and service_name cannot be empty")
+		}
+
+		mgr.mu.Lock()
+		sb, exists := mgr.sandboxes[id]
+		mgr.mu.Unlock()
+
+		if !exists {
+			return "", fmt.Errorf("sandbox %q not found", id)
+		}
+
+		err := sb.StopService(name)
+		if err != nil {
+			return "", fmt.Errorf("failed to stop service: %w", err)
+		}
+
+		return fmt.Sprintf("✅ Service %q stopped successfully inside sandbox %q.", name, id), nil
+	})
+}
+
+// ─── TOOL: list_services ──────────────────────────────────────────────────────
+
+type ListServicesArgs struct {
+	SandboxID string `json:"sandbox_id"`
+}
+
+func MakeListServicesTool(mgr *Manager) (tool.Tool, error) {
+	return functiontool.New(functiontool.Config{
+		Name:        "list_services",
+		Description: "List all registered services inside a sandbox and query their current status and log paths.",
+	}, func(ctx tool.Context, args ListServicesArgs) (string, error) {
+		id := strings.TrimSpace(args.SandboxID)
+		if id == "" {
+			return "", fmt.Errorf("sandbox_id cannot be empty")
+		}
+
+		mgr.mu.Lock()
+		sb, exists := mgr.sandboxes[id]
+		mgr.mu.Unlock()
+
+		if !exists {
+			return "", fmt.Errorf("sandbox %q not found", id)
+		}
+
+		svcs, err := sb.ListServices()
+		if err != nil {
+			return "", fmt.Errorf("failed to list services: %w", err)
+		}
+
+		if len(svcs) == 0 {
+			return fmt.Sprintf("No services registered in sandbox %q.", id), nil
+		}
+
+		var sbLines []string
+		sbLines = append(sbLines, fmt.Sprintf("Services registered in sandbox %q:", id))
+		for _, s := range svcs {
+			sbLines = append(sbLines, fmt.Sprintf("  • %s [status: %s, autostart: %t]", s.Name, s.Status, s.AutoStart))
+			sbLines = append(sbLines, fmt.Sprintf("    command: %s", s.Command))
+			if s.Cwd != "" {
+				sbLines = append(sbLines, fmt.Sprintf("    cwd:     %s", s.Cwd))
+			}
+			sbLines = append(sbLines, fmt.Sprintf("    log:     %s", s.LogPath))
+		}
+
+		return strings.Join(sbLines, "\n"), nil
+	})
+}
+
 // ─── TOOL: switch_env ─────────────────────────────────────────────────────────
 
 type SwitchEnvArgs struct {
@@ -401,6 +585,26 @@ func MakeAllTools(mgr *Manager) ([]tool.Tool, error) {
 	if err != nil {
 		return nil, err
 	}
+	registerServiceTool, err := MakeRegisterServiceTool(mgr)
+	if err != nil {
+		return nil, err
+	}
+	deregisterServiceTool, err := MakeDeregisterServiceTool(mgr)
+	if err != nil {
+		return nil, err
+	}
+	startServiceTool, err := MakeStartServiceTool(mgr)
+	if err != nil {
+		return nil, err
+	}
+	stopServiceTool, err := MakeStopServiceTool(mgr)
+	if err != nil {
+		return nil, err
+	}
+	listServicesTool, err := MakeListServicesTool(mgr)
+	if err != nil {
+		return nil, err
+	}
 
 	return []tool.Tool{
 		execTool,
@@ -408,6 +612,11 @@ func MakeAllTools(mgr *Manager) ([]tool.Tool, error) {
 		readTool,
 		spawnTool,
 		configureTool,
+		registerServiceTool,
+		deregisterServiceTool,
+		startServiceTool,
+		stopServiceTool,
+		listServicesTool,
 		switchTool,
 		destroyTool,
 		resetTool,
