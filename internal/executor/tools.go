@@ -3,7 +3,7 @@ package executor
 import (
 	"fmt"
 
-	"google.golang.org/adk/tool"
+	"google.golang.org/adk/v2/tool"
 )
 
 const maxOutputLen = 50000

@@ -5,8 +5,9 @@ import (
 	"strings"
 
 	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // RegisterServiceArgs holds arguments for the register_service tool.
@@ -23,7 +24,7 @@ func MakeRegisterServiceTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "register_service",
 		Description: "Register or update a persistent background service (e.g. webserver) inside a sandbox.",
-	}, func(ctx tool.Context, args RegisterServiceArgs) (string, error) {
+	}, func(ctx agent.Context, args RegisterServiceArgs) (string, error) {
 		id := strings.TrimSpace(args.SandboxID)
 		name := strings.TrimSpace(args.Name)
 		cmd := strings.TrimSpace(args.Command)

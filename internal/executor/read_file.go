@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // ReadFileArgs holds arguments for the read_file tool.
@@ -18,7 +19,7 @@ func MakeReadFileTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_file",
 		Description: "Reads a file from the active environment's filesystem namespace (host OS or a sandbox).",
-	}, func(ctx tool.Context, args ReadFileArgs) (string, error) {
+	}, func(ctx agent.Context, args ReadFileArgs) (string, error) {
 		path := strings.TrimSpace(args.Path)
 		if path == "" {
 			return "", fmt.Errorf("path cannot be empty")

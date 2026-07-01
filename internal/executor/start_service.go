@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // StartServiceArgs holds arguments for the start_service tool.
@@ -19,7 +20,7 @@ func MakeStartServiceTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "start_service",
 		Description: "Manually start a registered background service inside a sandbox.",
-	}, func(ctx tool.Context, args StartServiceArgs) (string, error) {
+	}, func(ctx agent.Context, args StartServiceArgs) (string, error) {
 		id := strings.TrimSpace(args.SandboxID)
 		name := strings.TrimSpace(args.ServiceName)
 		if id == "" || name == "" {

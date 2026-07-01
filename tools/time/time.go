@@ -3,8 +3,9 @@ package time
 import (
 	"time"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 type GetTimeArgs struct{}
@@ -19,7 +20,7 @@ func MakeGetTimeTool() (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "get_time",
 		Description: "Retrieves the current local system date, time, and timezone. Use this when the user asks about the time or date.",
-	}, func(ctx tool.Context, args GetTimeArgs) (TimeInfo, error) {
+	}, func(ctx agent.Context, args GetTimeArgs) (TimeInfo, error) {
 		now := time.Now()
 		zone, _ := now.Zone()
 		return TimeInfo{

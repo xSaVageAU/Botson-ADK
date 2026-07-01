@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // SwitchEnvArgs holds arguments for the switch_env tool.
@@ -18,7 +19,7 @@ func MakeSwitchEnvTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "switch_env",
 		Description: "Switch the active execution environment. Use 'host' to switch back to the host OS, or a sandbox ID to switch into a sandbox.",
-	}, func(ctx tool.Context, args SwitchEnvArgs) (string, error) {
+	}, func(ctx agent.Context, args SwitchEnvArgs) (string, error) {
 		id := strings.TrimSpace(args.ID)
 		if id == "" {
 			return "", fmt.Errorf("id cannot be empty")

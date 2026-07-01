@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // ListEnvsArgs holds arguments for the list_envs tool.
@@ -16,7 +17,7 @@ func MakeListEnvsTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_envs",
 		Description: "List all active execution environments (host and any live sandboxes). The active environment is marked with ▶.",
-	}, func(ctx tool.Context, args ListEnvsArgs) (string, error) {
+	}, func(ctx agent.Context, args ListEnvsArgs) (string, error) {
 		envs := mgr.List()
 		var sb strings.Builder
 		sb.WriteString("Execution Environments:\n")

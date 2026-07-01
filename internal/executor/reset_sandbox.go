@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // ResetSandboxArgs holds arguments for the reset_sandbox tool.
@@ -18,7 +19,7 @@ func MakeResetSandboxTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "reset_sandbox",
 		Description: "Wipe a sandbox's filesystem back to its original template state without changing its ID or destroying it.",
-	}, func(ctx tool.Context, args ResetSandboxArgs) (string, error) {
+	}, func(ctx agent.Context, args ResetSandboxArgs) (string, error) {
 		id := strings.TrimSpace(args.ID)
 		if id == "" {
 			return "", fmt.Errorf("id cannot be empty")

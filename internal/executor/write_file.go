@@ -5,8 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // WriteFileArgs holds arguments for the write_file tool.
@@ -21,7 +22,7 @@ func MakeWriteFileTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "write_file",
 		Description: "Writes a file directly into the active environment's filesystem namespace (host OS or a sandbox). Creates parent directories if missing.",
-	}, func(ctx tool.Context, args WriteFileArgs) (string, error) {
+	}, func(ctx agent.Context, args WriteFileArgs) (string, error) {
 		path := strings.TrimSpace(args.Path)
 		if path == "" {
 			return "", fmt.Errorf("path cannot be empty")

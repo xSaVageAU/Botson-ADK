@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // ListServicesArgs holds arguments for the list_services tool.
@@ -18,7 +19,7 @@ func MakeListServicesTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_services",
 		Description: "List all registered services inside a sandbox and query their current status and log paths.",
-	}, func(ctx tool.Context, args ListServicesArgs) (string, error) {
+	}, func(ctx agent.Context, args ListServicesArgs) (string, error) {
 		id := strings.TrimSpace(args.SandboxID)
 		if id == "" {
 			return "", fmt.Errorf("sandbox_id cannot be empty")

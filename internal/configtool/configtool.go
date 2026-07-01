@@ -3,8 +3,9 @@ package configtool
 import (
 	"fmt"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 
 	"botson/internal/config"
 )
@@ -22,7 +23,7 @@ func MakeReadConfigTool(mgr *config.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_config",
 		Description: "Reads the current active configuration of the Botson agent (current model, provider, and system instruction). Use this when the user asks about settings.",
-	}, func(ctx tool.Context, args ReadConfigArgs) (ConfigInfo, error) {
+	}, func(ctx agent.Context, args ReadConfigArgs) (ConfigInfo, error) {
 		cfg := mgr.Get()
 		modelName := ""
 		pCfg, _ := mgr.GetProvider(cfg.Provider)
@@ -50,7 +51,7 @@ func MakeUpdateConfigTool(mgr *config.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "update_config",
 		Description: "Updates the configuration settings of the Botson agent. You can update provider, model, api_key, discord_token, or system instruction. Note: changes will take effect immediately.",
-	}, func(ctx tool.Context, args UpdateConfigArgs) (string, error) {
+	}, func(ctx agent.Context, args UpdateConfigArgs) (string, error) {
 		cfg := mgr.Get()
 		updatedCore := false
 		updatedProvider := false

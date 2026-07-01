@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // DeregisterServiceArgs holds arguments for the deregister_service tool.
@@ -19,7 +20,7 @@ func MakeDeregisterServiceTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "deregister_service",
 		Description: "Remove a service definition from a sandbox, stopping it first if it is currently running.",
-	}, func(ctx tool.Context, args DeregisterServiceArgs) (string, error) {
+	}, func(ctx agent.Context, args DeregisterServiceArgs) (string, error) {
 		id := strings.TrimSpace(args.SandboxID)
 		name := strings.TrimSpace(args.ServiceName)
 		if id == "" || name == "" {

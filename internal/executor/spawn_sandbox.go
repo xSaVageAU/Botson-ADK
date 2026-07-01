@@ -5,8 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // SpawnSandboxArgs holds arguments for the spawn_sandbox tool.
@@ -22,7 +23,7 @@ func MakeSpawnSandboxTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "spawn_sandbox",
 		Description: "Spawn a new isolated gVisor sandbox environment and switch the active executor to it. Returns the sandbox ID.",
-	}, func(ctx tool.Context, args SpawnSandboxArgs) (string, error) {
+	}, func(ctx agent.Context, args SpawnSandboxArgs) (string, error) {
 		id := strings.TrimSpace(args.ID)
 		if id == "" {
 			// Generate fallback ID

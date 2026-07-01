@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // SaveTemplateArgs holds arguments for the save_template tool.
@@ -20,7 +21,7 @@ func MakeSaveTemplateTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "save_template",
 		Description: "Snapshot a sandbox's current rootfs state as a named reusable template for future spawn_sandbox calls.",
-	}, func(ctx tool.Context, args SaveTemplateArgs) (string, error) {
+	}, func(ctx agent.Context, args SaveTemplateArgs) (string, error) {
 		sandboxID := strings.TrimSpace(args.SandboxID)
 		templateName := strings.TrimSpace(args.TemplateName)
 

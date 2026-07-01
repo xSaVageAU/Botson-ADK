@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // ConfigureSandboxArgs holds arguments for the configure_sandbox tool.
@@ -20,7 +21,7 @@ func MakeConfigureSandboxTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "configure_sandbox",
 		Description: "Configure settings of an existing sandbox (such as persistence or auto-start on agent startup).",
-	}, func(ctx tool.Context, args ConfigureSandboxArgs) (string, error) {
+	}, func(ctx agent.Context, args ConfigureSandboxArgs) (string, error) {
 		id := strings.TrimSpace(args.ID)
 		if id == "" {
 			return "", fmt.Errorf("id cannot be empty")

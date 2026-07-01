@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/adk/tool"
-	"google.golang.org/adk/tool/functiontool"
+	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/tool"
+	"google.golang.org/adk/v2/tool/functiontool"
 )
 
 // StopServiceArgs holds arguments for the stop_service tool.
@@ -19,7 +20,7 @@ func MakeStopServiceTool(mgr *Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "stop_service",
 		Description: "Stop a running background service inside a sandbox.",
-	}, func(ctx tool.Context, args StopServiceArgs) (string, error) {
+	}, func(ctx agent.Context, args StopServiceArgs) (string, error) {
 		id := strings.TrimSpace(args.SandboxID)
 		name := strings.TrimSpace(args.ServiceName)
 		if id == "" || name == "" {
