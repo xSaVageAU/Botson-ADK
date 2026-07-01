@@ -89,7 +89,7 @@ func main() {
 	}
 
 	// 3. Create the session service
-	dbPath := filepath.Join(dataDir, "sessions.db")
+	dbPath := filepath.Join(dataDir, "botson.db")
 	sessSvc, err := database.NewSessionService(sqlite.Open(dbPath))
 	if err != nil {
 		log.Fatalf("Failed to initialize session service: %v", err)
@@ -188,7 +188,7 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Fatalf("Failed to resolve configuration paths: %v", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "sessions.db")
+	dbPath := filepath.Join(dataDir, "botson.db")
 	sessSvc, err := database.NewSessionService(sqlite.Open(dbPath))
 	if err != nil {
 		log.Fatalf("Failed to initialize session service: %v", err)

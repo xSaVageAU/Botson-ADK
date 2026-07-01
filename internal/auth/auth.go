@@ -50,17 +50,25 @@ func getDBLocked() (*sql.DB, error) {
 		return db, nil
 	}
 
-	opened, err := sqliteutil.OpenDB(dataDir, "core.db")
+	opened, err := sqliteutil.OpenDB(dataDir, "botson.db")
 	if err != nil {
 		return nil, err
 	}
 
-	// Schema setup
+	// Schema setup for allowlist and pending_pairings
 	schema := `
 	CREATE TABLE IF NOT EXISTS allowlist (
 		gateway TEXT NOT NULL,
 		user_id TEXT NOT NULL,
 		PRIMARY KEY (gateway, user_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS pending_pairings (
+		code TEXT NOT NULL PRIMARY KEY,
+		gateway TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		username TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL
 	);`
 	if _, err := opened.Exec(schema); err != nil {
 		opened.Close()
@@ -97,6 +105,32 @@ func getDBLocked() (*sql.DB, error) {
 		}
 	}
 
+	// One-time migration from pairings.json if it exists
+	pairingsPath := filepath.Join(dataDir, "pairings.json")
+	if _, err := os.Stat(pairingsPath); err == nil {
+		file, err := os.Open(pairingsPath)
+		if err == nil {
+			var pairings []PendingPairing
+			if json.NewDecoder(file).Decode(&pairings) == nil {
+				tx, err := db.Begin()
+				if err == nil {
+					stmt, err := tx.Prepare("INSERT OR IGNORE INTO pending_pairings (code, gateway, user_id, username, created_at) VALUES (?, ?, ?, ?, ?)")
+					if err == nil {
+						for _, p := range pairings {
+							_, _ = stmt.Exec(p.Code, p.Gateway, p.UserID, p.Username, p.CreatedAt)
+						}
+						stmt.Close()
+						_ = tx.Commit()
+					} else {
+						_ = tx.Rollback()
+					}
+				}
+			}
+			file.Close()
+			_ = os.Remove(pairingsPath)
+		}
+	}
+
 	return db, nil
 }
 
@@ -110,52 +144,6 @@ func CloseDB() error {
 		return err
 	}
 	return nil
-}
-
-// LoadPairings loads the pending pairings list from disk.
-func LoadPairings() ([]PendingPairing, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	return loadPairingsLocked()
-}
-
-func loadPairingsLocked() ([]PendingPairing, error) {
-	dir := dataDir
-	path := filepath.Join(dir, "pairings.json")
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []PendingPairing{}, nil
-		}
-		return nil, err
-	}
-	defer file.Close()
-
-	var pairings []PendingPairing
-	if err := json.NewDecoder(file).Decode(&pairings); err != nil {
-		return nil, err
-	}
-	return pairings, nil
-}
-
-// SavePairings writes the pending pairings list to disk.
-func SavePairings(pairings []PendingPairing) error {
-	mu.Lock()
-	defer mu.Unlock()
-	return savePairingsLocked(pairings)
-}
-
-func savePairingsLocked(pairings []PendingPairing) error {
-	dir := dataDir
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	path := filepath.Join(dir, "pairings.json")
-	data, err := json.MarshalIndent(pairings, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
 }
 
 // generateCode generates a random 8-character uppercase alphanumeric string.
@@ -178,12 +166,12 @@ func CheckAuth(gateway, userID, username string) (bool, string, error) {
 
 	gateway = strings.ToLower(gateway)
 
-	// 1. Check Allowlist in SQLite
 	d, err := getDBLocked()
 	if err != nil {
 		return false, "", fmt.Errorf("failed to access database: %w", err)
 	}
 
+	// 1. Check Allowlist
 	var count int
 	err = d.QueryRow("SELECT COUNT(*) FROM allowlist WHERE gateway = ? AND user_id = ?", gateway, userID).Scan(&count)
 	if err != nil {
@@ -195,44 +183,31 @@ func CheckAuth(gateway, userID, username string) (bool, string, error) {
 	}
 
 	// 2. Check Pending Pairings
-	pairings, err := loadPairingsLocked()
-	if err != nil {
-		return false, "", fmt.Errorf("failed to load pairings: %w", err)
-	}
-
-	for _, p := range pairings {
-		if strings.ToLower(p.Gateway) == gateway && p.UserID == userID {
-			return false, p.Code, nil
-		}
+	var code string
+	err = d.QueryRow("SELECT code FROM pending_pairings WHERE gateway = ? AND user_id = ?", gateway, userID).Scan(&code)
+	if err == nil {
+		return false, code, nil
+	} else if err != sql.ErrNoRows {
+		return false, "", fmt.Errorf("failed to query pending pairings: %w", err)
 	}
 
 	// 3. Generate New Pairing Code
-	var code string
 	for {
 		code = generateCode()
-		// Ensure code is unique in current pending pairings
-		unique := true
-		for _, p := range pairings {
-			if p.Code == code {
-				unique = false
-				break
-			}
+		// Ensure code is unique in database
+		var exists int
+		err = d.QueryRow("SELECT COUNT(*) FROM pending_pairings WHERE code = ?", code).Scan(&exists)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to check code uniqueness: %w", err)
 		}
-		if unique {
+		if exists == 0 {
 			break
 		}
 	}
 
-	newPairing := PendingPairing{
-		Code:      code,
-		Gateway:   gateway,
-		UserID:    userID,
-		Username:  username,
-		CreatedAt: time.Now(),
-	}
-
-	pairings = append(pairings, newPairing)
-	if err := savePairingsLocked(pairings); err != nil {
+	_, err = d.Exec("INSERT INTO pending_pairings (code, gateway, user_id, username, created_at) VALUES (?, ?, ?, ?, ?)",
+		code, gateway, userID, username, time.Now())
+	if err != nil {
 		return false, "", fmt.Errorf("failed to save pending pairing: %w", err)
 	}
 
@@ -249,50 +224,57 @@ func ApprovePairing(gateway, code string) (string, error) {
 	gateway = strings.ToLower(gateway)
 	code = strings.ToUpper(strings.TrimSpace(code))
 
-	// 1. Load pending pairings
-	pairings, err := loadPairingsLocked()
-	if err != nil {
-		return "", fmt.Errorf("failed to load pairings: %w", err)
-	}
-
-	matchIdx := -1
-	for i, p := range pairings {
-		if strings.ToLower(p.Gateway) == gateway && p.Code == code {
-			matchIdx = i
-			break
-		}
-	}
-
-	if matchIdx == -1 {
-		return "", fmt.Errorf("no pending pairing code %q found for gateway %q", code, gateway)
-	}
-
-	target := pairings[matchIdx]
-
-	// 2. Insert into SQLite allowlist
 	d, err := getDBLocked()
 	if err != nil {
 		return "", fmt.Errorf("failed to access database: %w", err)
 	}
 
-	_, err = d.Exec("INSERT OR IGNORE INTO allowlist (gateway, user_id) VALUES (?, ?)", gateway, target.UserID)
+	// 1. Fetch pending pairing details
+	var userID, username string
+	err = d.QueryRow("SELECT user_id, username FROM pending_pairings WHERE gateway = ? AND code = ?", gateway, code).Scan(&userID, &username)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("no pending pairing code %q found for gateway %q", code, gateway)
+	} else if err != nil {
+		return "", fmt.Errorf("failed to query pending pairing: %w", err)
+	}
+
+	// 2. Perform insert and delete in transaction
+	tx, err := d.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec("INSERT OR IGNORE INTO allowlist (gateway, user_id) VALUES (?, ?)", gateway, userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to save user to allowlist: %w", err)
 	}
 
-	// 3. Remove pairing from pending list
-	pairings = append(pairings[:matchIdx], pairings[matchIdx+1:]...)
-	if err := savePairingsLocked(pairings); err != nil {
-		return "", fmt.Errorf("failed to save updated pairings: %w", err)
+	_, err = tx.Exec("DELETE FROM pending_pairings WHERE gateway = ? AND code = ?", gateway, code)
+	if err != nil {
+		return "", fmt.Errorf("failed to delete pending pairing: %w", err)
 	}
 
-	return target.Username, nil
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return username, nil
 }
 
-// ClearPairings clears all pending pairings from the storage.
+// ClearPairings clears all pending pairings from the database.
 func ClearPairings() error {
 	mu.Lock()
 	defer mu.Unlock()
-	return savePairingsLocked([]PendingPairing{})
-}
 
+	d, err := getDBLocked()
+	if err != nil {
+		return fmt.Errorf("failed to access database: %w", err)
+	}
+
+	_, err = d.Exec("DELETE FROM pending_pairings")
+	if err != nil {
+		return fmt.Errorf("failed to clear pairings: %w", err)
+	}
+	return nil
+}

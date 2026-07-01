@@ -29,10 +29,10 @@ func TestAuthAndCoreDB(t *testing.T) {
 		t.Errorf("Expected 8-character pairing code, got %s", code1)
 	}
 
-	// Verify core.db is created
-	coreDBPath := filepath.Join(tmpDir, "core.db")
+	// Verify botson.db is created
+	coreDBPath := filepath.Join(tmpDir, "botson.db")
 	if _, err := os.Stat(coreDBPath); os.IsNotExist(err) {
-		t.Errorf("Expected core.db to be created, but it does not exist")
+		t.Errorf("Expected botson.db to be created, but it does not exist")
 	}
 
 	// 2. Checking again should return the same pending code
