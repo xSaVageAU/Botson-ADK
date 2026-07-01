@@ -25,7 +25,7 @@ import (
 	configtools "botson/internal/tools/config"
 	executortools "botson/internal/tools/executor"
 	sqlitesession "botson/internal/session"
-	"botson/tools/time"
+	timetools "botson/internal/tools/time"
 	"strings"
 )
 
@@ -124,7 +124,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create update_config tool: %v", err)
 	}
-	timeTool, err := time.MakeGetTimeTool()
+	timeTool, err := timetools.MakeGetTimeTool()
 	if err != nil {
 		log.Fatalf("Failed to create get_time tool: %v", err)
 	}
@@ -218,7 +218,7 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	if err != nil {
 		log.Fatalf("Failed to create update_config tool: %v", err)
 	}
-	timeTool, err := time.MakeGetTimeTool()
+	timeTool, err := timetools.MakeGetTimeTool()
 	if err != nil {
 		log.Fatalf("Failed to create get_time tool: %v", err)
 	}
