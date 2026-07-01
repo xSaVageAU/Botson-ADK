@@ -24,8 +24,9 @@ import (
 	"botson/internal/executor"
 	configtools "botson/internal/tools/config"
 	executortools "botson/internal/tools/executor"
-	sqlitesession "botson/internal/session"
 	timetools "botson/internal/tools/time"
+	"github.com/glebarez/sqlite"
+	"google.golang.org/adk/v2/session/database"
 	"strings"
 )
 
@@ -88,9 +89,13 @@ func main() {
 	}
 
 	// 3. Create the session service
-	sessSvc, err := sqlitesession.NewSQLiteService(dataDir)
+	dbPath := filepath.Join(dataDir, "sessions.db")
+	sessSvc, err := database.NewSessionService(sqlite.Open(dbPath))
 	if err != nil {
 		log.Fatalf("Failed to initialize session service: %v", err)
+	}
+	if err := database.AutoMigrate(sessSvc); err != nil {
+		log.Fatalf("Failed to migrate session database: %v", err)
 	}
 
 	// Define dynamic config getters
@@ -183,9 +188,13 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Fatalf("Failed to resolve configuration paths: %v", err)
 	}
 
-	sessSvc, err := sqlitesession.NewSQLiteService(dataDir)
+	dbPath := filepath.Join(dataDir, "sessions.db")
+	sessSvc, err := database.NewSessionService(sqlite.Open(dbPath))
 	if err != nil {
 		log.Fatalf("Failed to initialize session service: %v", err)
+	}
+	if err := database.AutoMigrate(sessSvc); err != nil {
+		log.Fatalf("Failed to migrate session database: %v", err)
 	}
 
 	// Define dynamic config getters
