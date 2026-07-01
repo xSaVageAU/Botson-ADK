@@ -280,6 +280,39 @@ func (m *Manager) ListTemplates() ([]string, error) {
 	return rm.ListCustomTemplates()
 }
 
+// StartService runs a registered service in the background of a sandbox.
+func (m *Manager) StartService(id string, name string) error {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", id)
+	}
+	return sb.StartService(name)
+}
+
+// StopService terminates a running service in a sandbox.
+func (m *Manager) StopService(id string, name string) error {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+	if !exists {
+		return fmt.Errorf("sandbox %q not found", id)
+	}
+	return sb.StopService(name)
+}
+
+// ListServices lists the registered services and their statuses for a sandbox.
+func (m *Manager) ListServices(id string) ([]sandbox.ServiceStatus, error) {
+	m.mu.Lock()
+	sb, exists := m.sandboxes[id]
+	m.mu.Unlock()
+	if !exists {
+		return nil, fmt.Errorf("sandbox %q not found", id)
+	}
+	return sb.ListServices()
+}
+
 // Close closes all active sandboxes.
 func (m *Manager) Close() error {
 	m.mu.Lock()

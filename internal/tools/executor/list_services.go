@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -15,7 +16,7 @@ type ListServicesArgs struct {
 }
 
 // MakeListServicesTool creates the list_services tool definition.
-func MakeListServicesTool(mgr *Manager) (tool.Tool, error) {
+func MakeListServicesTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_services",
 		Description: "List all registered services inside a sandbox and query their current status and log paths.",
@@ -25,15 +26,7 @@ func MakeListServicesTool(mgr *Manager) (tool.Tool, error) {
 			return "", fmt.Errorf("sandbox_id cannot be empty")
 		}
 
-		mgr.mu.Lock()
-		sb, exists := mgr.sandboxes[id]
-		mgr.mu.Unlock()
-
-		if !exists {
-			return "", fmt.Errorf("sandbox %q not found", id)
-		}
-
-		svcs, err := sb.ListServices()
+		svcs, err := mgr.ListServices(id)
 		if err != nil {
 			return "", fmt.Errorf("failed to list services: %w", err)
 		}

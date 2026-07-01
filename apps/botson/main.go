@@ -21,8 +21,9 @@ import (
 	"botson/providers"
 	"botson/internal/auth"
 	"botson/internal/config"
-	"botson/internal/configtool"
-	botsonExecutor "botson/internal/executor"
+	"botson/internal/executor"
+	configtools "botson/internal/tools/config"
+	executortools "botson/internal/tools/executor"
 	sqlitesession "botson/internal/session"
 	"botson/tools/time"
 	"strings"
@@ -78,7 +79,7 @@ func main() {
 			printUsage()
 			return
 		case "wslsetup":
-			err := botsonExecutor.SetupWSL(dataDir)
+			err := executor.SetupWSL(dataDir)
 			if err != nil {
 				log.Fatalf("Failed to setup WSL sandbox environment: %v", err)
 			}
@@ -115,11 +116,11 @@ func main() {
 	}
 
 	// 5. Initialize configuration tools
-	readTool, err := configtool.MakeReadConfigTool(mgr)
+	readTool, err := configtools.MakeReadConfigTool(mgr)
 	if err != nil {
 		log.Fatalf("Failed to create read_config tool: %v", err)
 	}
-	writeTool, err := configtool.MakeUpdateConfigTool(mgr)
+	writeTool, err := configtools.MakeUpdateConfigTool(mgr)
 	if err != nil {
 		log.Fatalf("Failed to create update_config tool: %v", err)
 	}
@@ -129,10 +130,10 @@ func main() {
 	}
 
 	// Initialize Executor Manager
-	execMgr := botsonExecutor.NewManager(filepath.Join(dataDir, "cache"), "")
+	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "")
 	defer execMgr.Close()
 
-	execTools, err := botsonExecutor.MakeAllTools(execMgr)
+	execTools, err := executortools.MakeAllTools(execMgr)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
 	}
@@ -209,11 +210,11 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	}
 
 	// 5. Initialize configuration tools
-	readTool, err := configtool.MakeReadConfigTool(mgr)
+	readTool, err := configtools.MakeReadConfigTool(mgr)
 	if err != nil {
 		log.Fatalf("Failed to create read_config tool: %v", err)
 	}
-	writeTool, err := configtool.MakeUpdateConfigTool(mgr)
+	writeTool, err := configtools.MakeUpdateConfigTool(mgr)
 	if err != nil {
 		log.Fatalf("Failed to create update_config tool: %v", err)
 	}
@@ -223,10 +224,10 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	}
 
 	// Initialize Executor Manager
-	execMgr := botsonExecutor.NewManager(filepath.Join(dataDir, "cache"), "")
+	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "")
 	defer execMgr.Close()
 
-	execTools, err := botsonExecutor.MakeAllTools(execMgr)
+	execTools, err := executortools.MakeAllTools(execMgr)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
 	}

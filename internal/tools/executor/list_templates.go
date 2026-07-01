@@ -1,8 +1,9 @@
-package executor
+package executortools
 
 import (
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -12,7 +13,7 @@ import (
 type ListTemplatesArgs struct{}
 
 // MakeListTemplatesTool creates the list_templates tool definition.
-func MakeListTemplatesTool(mgr *Manager) (tool.Tool, error) {
+func MakeListTemplatesTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_templates",
 		Description: "List all saved custom rootfs templates available for use with spawn_sandbox.",

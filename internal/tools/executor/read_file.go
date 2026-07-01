@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -15,7 +16,7 @@ type ReadFileArgs struct {
 }
 
 // MakeReadFileTool creates the read_file tool definition.
-func MakeReadFileTool(mgr *Manager) (tool.Tool, error) {
+func MakeReadFileTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "read_file",
 		Description: "Reads a file from the active environment's filesystem namespace (host OS or a sandbox).",

@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -15,7 +16,7 @@ type DestroySandboxArgs struct {
 }
 
 // MakeDestroySandboxTool creates the destroy_sandbox tool definition.
-func MakeDestroySandboxTool(mgr *Manager) (tool.Tool, error) {
+func MakeDestroySandboxTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "destroy_sandbox",
 		Description: "Stop and permanently destroy a sandbox environment by ID. If the destroyed sandbox was active, the host becomes the active executor.",

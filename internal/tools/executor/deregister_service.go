@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -16,7 +17,7 @@ type DeregisterServiceArgs struct {
 }
 
 // MakeDeregisterServiceTool creates the deregister_service tool definition.
-func MakeDeregisterServiceTool(mgr *Manager) (tool.Tool, error) {
+func MakeDeregisterServiceTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "deregister_service",
 		Description: "Remove a service definition from a sandbox, stopping it first if it is currently running.",

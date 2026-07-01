@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
@@ -20,7 +21,7 @@ type RegisterServiceArgs struct {
 }
 
 // MakeRegisterServiceTool creates the register_service tool definition.
-func MakeRegisterServiceTool(mgr *Manager) (tool.Tool, error) {
+func MakeRegisterServiceTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "register_service",
 		Description: "Register or update a persistent background service (e.g. webserver) inside a sandbox.",

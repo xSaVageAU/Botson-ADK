@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -16,7 +17,7 @@ type StartServiceArgs struct {
 }
 
 // MakeStartServiceTool creates the start_service tool definition.
-func MakeStartServiceTool(mgr *Manager) (tool.Tool, error) {
+func MakeStartServiceTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "start_service",
 		Description: "Manually start a registered background service inside a sandbox.",
@@ -27,15 +28,7 @@ func MakeStartServiceTool(mgr *Manager) (tool.Tool, error) {
 			return "", fmt.Errorf("sandbox_id and service_name cannot be empty")
 		}
 
-		mgr.mu.Lock()
-		sb, exists := mgr.sandboxes[id]
-		mgr.mu.Unlock()
-
-		if !exists {
-			return "", fmt.Errorf("sandbox %q not found", id)
-		}
-
-		err := sb.StartService(name)
+		err := mgr.StartService(id, name)
 		if err != nil {
 			return "", fmt.Errorf("failed to start service: %w", err)
 		}

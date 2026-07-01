@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -15,7 +16,7 @@ type ResetSandboxArgs struct {
 }
 
 // MakeResetSandboxTool creates the reset_sandbox tool definition.
-func MakeResetSandboxTool(mgr *Manager) (tool.Tool, error) {
+func MakeResetSandboxTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "reset_sandbox",
 		Description: "Wipe a sandbox's filesystem back to its original template state without changing its ID or destroying it.",

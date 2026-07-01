@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -13,7 +14,7 @@ import (
 type ListEnvsArgs struct{}
 
 // MakeListEnvsTool creates the list_envs tool definition.
-func MakeListEnvsTool(mgr *Manager) (tool.Tool, error) {
+func MakeListEnvsTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "list_envs",
 		Description: "List all active execution environments (host and any live sandboxes). The active environment is marked with ▶.",

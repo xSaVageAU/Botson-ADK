@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -17,7 +18,7 @@ type ConfigureSandboxArgs struct {
 }
 
 // MakeConfigureSandboxTool creates the configure_sandbox tool definition.
-func MakeConfigureSandboxTool(mgr *Manager) (tool.Tool, error) {
+func MakeConfigureSandboxTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "configure_sandbox",
 		Description: "Configure settings of an existing sandbox (such as persistence or auto-start on agent startup).",

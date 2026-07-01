@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -16,7 +17,7 @@ type StopServiceArgs struct {
 }
 
 // MakeStopServiceTool creates the stop_service tool definition.
-func MakeStopServiceTool(mgr *Manager) (tool.Tool, error) {
+func MakeStopServiceTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "stop_service",
 		Description: "Stop a running background service inside a sandbox.",
@@ -27,15 +28,7 @@ func MakeStopServiceTool(mgr *Manager) (tool.Tool, error) {
 			return "", fmt.Errorf("sandbox_id and service_name cannot be empty")
 		}
 
-		mgr.mu.Lock()
-		sb, exists := mgr.sandboxes[id]
-		mgr.mu.Unlock()
-
-		if !exists {
-			return "", fmt.Errorf("sandbox %q not found", id)
-		}
-
-		err := sb.StopService(name)
+		err := mgr.StopService(id, name)
 		if err != nil {
 			return "", fmt.Errorf("failed to stop service: %w", err)
 		}

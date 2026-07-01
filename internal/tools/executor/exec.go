@@ -1,10 +1,11 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"runtime"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -17,7 +18,7 @@ type ExecArgs struct {
 }
 
 // MakeExecTool creates the exec tool definition.
-func MakeExecTool(mgr *Manager) (tool.Tool, error) {
+func MakeExecTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "exec",
 		Description: "Executes a shell command in the currently active environment (host OS or a sandbox). Use this to run commands, run tests, build projects, or query system status.",

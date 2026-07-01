@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -15,7 +16,7 @@ type SwitchEnvArgs struct {
 }
 
 // MakeSwitchEnvTool creates the switch_env tool definition.
-func MakeSwitchEnvTool(mgr *Manager) (tool.Tool, error) {
+func MakeSwitchEnvTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "switch_env",
 		Description: "Switch the active execution environment. Use 'host' to switch back to the host OS, or a sandbox ID to switch into a sandbox.",

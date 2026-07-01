@@ -1,9 +1,10 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -17,7 +18,7 @@ type SaveTemplateArgs struct {
 }
 
 // MakeSaveTemplateTool creates the save_template tool definition.
-func MakeSaveTemplateTool(mgr *Manager) (tool.Tool, error) {
+func MakeSaveTemplateTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "save_template",
 		Description: "Snapshot a sandbox's current rootfs state as a named reusable template for future spawn_sandbox calls.",

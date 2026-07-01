@@ -1,10 +1,11 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"os"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -18,7 +19,7 @@ type WriteFileArgs struct {
 }
 
 // MakeWriteFileTool creates the write_file tool definition.
-func MakeWriteFileTool(mgr *Manager) (tool.Tool, error) {
+func MakeWriteFileTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "write_file",
 		Description: "Writes a file directly into the active environment's filesystem namespace (host OS or a sandbox). Creates parent directories if missing.",

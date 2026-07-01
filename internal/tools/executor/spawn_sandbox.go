@@ -1,10 +1,11 @@
-package executor
+package executortools
 
 import (
 	"fmt"
 	"os"
 	"strings"
 
+	"botson/internal/executor"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -19,7 +20,7 @@ type SpawnSandboxArgs struct {
 }
 
 // MakeSpawnSandboxTool creates the spawn_sandbox tool definition.
-func MakeSpawnSandboxTool(mgr *Manager) (tool.Tool, error) {
+func MakeSpawnSandboxTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "spawn_sandbox",
 		Description: "Spawn a new isolated gVisor sandbox environment and switch the active executor to it. Returns the sandbox ID.",
