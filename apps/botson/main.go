@@ -22,6 +22,7 @@ import (
 	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/executor"
+	"botson/internal/prompt"
 	configtools "botson/internal/tools/config"
 	executortools "botson/internal/tools/executor"
 	timetools "botson/internal/tools/time"
@@ -147,7 +148,8 @@ func main() {
 	toolsList = append(toolsList, execTools...)
 
 	// 6. Create the agent
-	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)
+	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction)
+	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, resolvedInstruction, toolsList)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
@@ -244,7 +246,8 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 	toolsList = append(toolsList, execTools...)
 
-	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, cfg.Instruction, toolsList)
+	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction)
+	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, resolvedInstruction, toolsList)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
