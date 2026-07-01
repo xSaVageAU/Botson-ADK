@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
+	"botson/internal/sandbox"
 )
 
 func TestManagerHostDefaults(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"botson/internal/executor"
-	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
+	"botson/internal/sandbox"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"

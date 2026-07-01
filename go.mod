@@ -3,7 +3,6 @@ module botson
 go 1.26.3
 
 require (
-	github.com/Botson-Agent/Botson-Sandbox v0.0.0-20260601084043-1b79f2533b6b
 	github.com/bwmarrin/discordgo v0.29.0
 	google.golang.org/adk/v2 v2.0.0
 	google.golang.org/genai v1.58.0
@@ -70,5 +69,3 @@ require (
 	rsc.io/omap v1.2.0 // indirect
 	rsc.io/ordered v1.1.1 // indirect
 )
-
-replace github.com/Botson-Agent/Botson-Sandbox => "D:/Coding Projects/botson-sandbox"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Botson-Agent/Botson-Sandbox/sandbox"
+	"botson/internal/sandbox"
 )
 
 // EnvInfo describes a live execution environment.
