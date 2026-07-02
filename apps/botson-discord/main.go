@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -47,6 +48,31 @@ func main() {
 
 	// Set data directory for authorization and pairings
 	auth.SetDataDir(dataDir)
+
+	// Intercept CLI subcommands for pairing and help
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "help", "-h", "-help", "--help":
+			printDiscordUsage()
+			return
+		case "pairing":
+			if len(os.Args) > 3 && os.Args[2] == "approve" {
+				if len(os.Args) < 5 {
+					log.Fatal("Usage: botson-discord pairing approve <gateway> <code>")
+				}
+				gateway := os.Args[3]
+				code := os.Args[4]
+				username, err := auth.ApprovePairing(gateway, code)
+				if err != nil {
+					log.Fatalf("Failed to approve pairing: %v", err)
+				}
+				fmt.Printf("Successfully approved pairing for user %s on %s!\n", username, gateway)
+				return
+			}
+			printDiscordUsage()
+			return
+		}
+	}
 
 	log.Println("Starting Botson Discord Gateway Client...")
 
@@ -149,4 +175,10 @@ func main() {
 	mgr.StopWatcher()
 	auth.CloseDB()
 	log.Println("Gateway stopped successfully.")
+}
+
+func printDiscordUsage() {
+	fmt.Println("Usage:")
+	fmt.Println("  botson-discord                                  - Run the standalone Discord gateway client")
+	fmt.Println("  botson-discord pairing approve <gateway> <code> - Approve a pending pairing request")
 }
