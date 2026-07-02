@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Botson Web UI (OpenRouter)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Space+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Botson</h1>
+        <span class="badge">OpenRouter Mode</span>
+    </header>
+
+    <div id="chat-container">
+        <div class="message agent">
+            Hello! I am Botson, configured here specifically using OpenRouter. How can I assist you with your coding workspace tasks today?
+        </div>
+    </div>
+
+    <div id="input-container">
+        <form id="input-form">
+            <input type="text" id="message-input" placeholder="Type a message or command..." required autocomplete="off">
+            <button type="submit" id="send-btn">Send</button>
+        </form>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
