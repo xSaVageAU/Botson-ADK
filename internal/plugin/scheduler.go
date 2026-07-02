@@ -67,6 +67,9 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 				return resp, err
 			}
 			calls := getFunctionCalls(resp.Content)
+			fmt.Printf("[Scheduler Debug] AfterModelCallback: SessionID=%q InvocationID=%q CallsCount=%d\n",
+				ctx.SessionID(), ctx.InvocationID(), len(calls))
+
 			if len(calls) > 0 {
 				q := getSessionQueue(ctx.SessionID())
 				q.mu.Lock()
@@ -88,11 +91,15 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 
 			sess := ctx.Session()
 			if sess == nil {
+				fmt.Printf("[Scheduler Debug] BeforeToolCallback: Session is nil for tool %q\n", t.Name())
 				return rt.Run(ctx, args)
 			}
 
 			q := getSessionQueue(ctx.SessionID())
 			q.mu.Lock()
+
+			fmt.Printf("[Scheduler Debug] BeforeToolCallback: SessionID=%q InvocationID=%q ToolName=%q CallID=%q q.lastEventID=%q len(q.functionCalls)=%d\n",
+				ctx.SessionID(), ctx.InvocationID(), t.Name(), ctx.FunctionCallID(), q.lastEventID, len(q.functionCalls))
 
 			var lastLLMID string
 			var functionCalls []*genai.FunctionCall
@@ -103,6 +110,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 				functionCalls = q.functionCalls
 			} else {
 				// Fallback to database lookup if not found in memory cache
+				fmt.Printf("[Scheduler Debug] Cache miss! Falling back to database lookup...\n")
 				q.mu.Unlock()
 				events := sess.Events()
 				var lastLLMEvent *session.Event
@@ -118,6 +126,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 					}
 				}
 				if lastLLMEvent == nil {
+					fmt.Printf("[Scheduler Debug] Fallback lookup failed. Executing tool immediately.\n")
 					return rt.Run(ctx, args)
 				}
 				lastLLMID = lastLLMEvent.ID
@@ -142,6 +151,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 			}
 
 			if callIndex == -1 {
+				fmt.Printf("[Scheduler Debug] Tool call %q not found in function calls. Executing immediately.\n", currCallID)
 				q.mu.Unlock()
 				return rt.Run(ctx, args)
 			}
@@ -149,6 +159,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 			// If it's not our turn, we wait on the channel for our index
 			var waitCh chan struct{}
 			if q.nextIndex < callIndex {
+				fmt.Printf("[Scheduler Debug] Tool %q (index %d) waiting for turn (current nextIndex is %d)\n", t.Name(), callIndex, q.nextIndex)
 				var exists bool
 				waitCh, exists = q.notifyChs[callIndex]
 				if !exists {
@@ -162,9 +173,12 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 				select {
 				case <-waitCh:
 					// Woken up, our turn has arrived!
+					fmt.Printf("[Scheduler Debug] Tool %q (index %d) woke up. Starting execution.\n", t.Name(), callIndex)
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				}
+			} else {
+				fmt.Printf("[Scheduler Debug] Tool %q (index %d) starting execution immediately (nextIndex matched).\n", t.Name(), callIndex)
 			}
 
 			// Run the tool synchronously
@@ -174,6 +188,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 			q.mu.Lock()
 			q.nextIndex++
 			nextIdx := q.nextIndex
+			fmt.Printf("[Scheduler Debug] Tool %q (index %d) finished. Advancing nextIndex to %d.\n", t.Name(), callIndex, nextIdx)
 			if nextCh, exists := q.notifyChs[nextIdx]; exists {
 				select {
 				case <-nextCh: // already closed
