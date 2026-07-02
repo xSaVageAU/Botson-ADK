@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -37,8 +38,10 @@ import (
 var webFiles embed.FS
 
 var (
-	agentRunner *runner.Runner
-	agentName   string
+	agentRunner   *runner.Runner
+	agentName     string
+	configMgr     *config.Manager
+	dataDirectory string
 )
 
 type ChatRequest struct {
@@ -66,6 +69,9 @@ func main() {
 		log.Fatalf("Failed to initialize configuration: %v", err)
 	}
 	cfg := mgr.Get()
+
+	configMgr = mgr
+	dataDirectory = dataDir
 
 	// Set data directory for authorization and pairings
 	auth.SetDataDir(dataDir)
@@ -158,6 +164,19 @@ func main() {
 	}
 	http.Handle("/", http.FileServer(http.FS(subFS)))
 	http.HandleFunc("/api/chat", handleChat)
+	http.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			handleGetConfig(w, r)
+		} else if r.Method == http.MethodPost {
+			handleSetConfig(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	http.HandleFunc("/api/sandbox", handleGetSandbox)
+	http.HandleFunc("/api/sandbox/setup", handleSetupSandbox)
+	http.HandleFunc("/api/pairings", handleGetPairings)
+	http.HandleFunc("/api/pairings/approve", handleApprovePairings)
 
 	port := ":8080"
 	log.Printf("Starting Botson Web UI on http://localhost%s using OpenRouter...\n", port)
@@ -224,4 +243,230 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		Error:    errText,
 	}
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := configMgr.Get()
+
+	// Mask helper
+	maskVal := func(val string) string {
+		if val == "" || val == "YOUR_DISCORD_TOKEN" || val == "YOUR_OPENROUTER_API_KEY" || val == "YOUR_GEMINI_API_KEY" {
+			return ""
+		}
+		return "••••••••"
+	}
+
+	// Fetch provider configs
+	orCfg, _ := configMgr.GetProvider("openrouter")
+	gemCfg, _ := configMgr.GetProvider("gemini")
+
+	orModel, orKey := "", ""
+	if orCfg != nil {
+		orModel = orCfg.Model
+		orKey = maskVal(orCfg.APIKey)
+	}
+
+	gemModel, gemKey := "", ""
+	if gemCfg != nil {
+		gemModel = gemCfg.Model
+		gemKey = maskVal(gemCfg.APIKey)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"provider":             cfg.Provider,
+		"instruction":          cfg.Instruction,
+		"discord_token_masked": maskVal(cfg.DiscordToken),
+		"sandboxing":           cfg.Features.Sandboxing,
+		"services":             cfg.Features.Services,
+		"coder":                cfg.Features.Coder,
+		"openrouter_model":     orModel,
+		"openrouter_key_mask":  orKey,
+		"gemini_model":         gemModel,
+		"gemini_key_mask":      gemKey,
+	})
+}
+
+type SetConfigReq struct {
+	Provider        string `json:"provider"`
+	Instruction     string `json:"instruction"`
+	DiscordToken    string `json:"discord_token"`
+	Sandboxing      *bool  `json:"sandboxing"`
+	Services        *bool  `json:"services"`
+	Coder           *bool  `json:"coder"`
+	OpenRouterModel string `json:"openrouter_model"`
+	OpenRouterKey   string `json:"openrouter_key"`
+	GeminiModel     string `json:"gemini_model"`
+	GeminiKey       string `json:"gemini_key"`
+}
+
+func handleSetConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SetConfigReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	cfg := configMgr.Get()
+
+	// Update core config fields
+	if req.Provider != "" {
+		cfg.Provider = req.Provider
+	}
+	if req.Instruction != "" {
+		cfg.Instruction = req.Instruction
+	}
+	if req.DiscordToken != "" && req.DiscordToken != "••••••••" {
+		cfg.DiscordToken = req.DiscordToken
+	}
+
+	// Update features
+	if req.Sandboxing != nil {
+		cfg.Features.Sandboxing = *req.Sandboxing
+	}
+	if req.Services != nil {
+		cfg.Features.Services = *req.Services
+	}
+	if req.Coder != nil {
+		cfg.Features.Coder = *req.Coder
+	}
+
+	// Handle cascading dependency rule
+	if !cfg.Features.Sandboxing {
+		cfg.Features.Services = false
+	}
+
+	if err := configMgr.Save(cfg); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to save core config: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Update OpenRouter provider config
+	if req.OpenRouterModel != "" || (req.OpenRouterKey != "" && req.OpenRouterKey != "••••••••") {
+		orCfg, _ := configMgr.GetProvider("openrouter")
+		if orCfg == nil {
+			orCfg = &config.ProviderConfig{}
+		}
+		if req.OpenRouterModel != "" {
+			orCfg.Model = req.OpenRouterModel
+		}
+		if req.OpenRouterKey != "" && req.OpenRouterKey != "••••••••" {
+			orCfg.APIKey = req.OpenRouterKey
+		}
+		_ = configMgr.SaveProvider("openrouter", orCfg)
+	}
+
+	// Update Gemini provider config
+	if req.GeminiModel != "" || (req.GeminiKey != "" && req.GeminiKey != "••••••••") {
+		gemCfg, _ := configMgr.GetProvider("gemini")
+		if gemCfg == nil {
+			gemCfg = &config.ProviderConfig{}
+		}
+		if req.GeminiModel != "" {
+			gemCfg.Model = req.GeminiModel
+		}
+		if req.GeminiKey != "" && req.GeminiKey != "••••••••" {
+			gemCfg.APIKey = req.GeminiKey
+		}
+		_ = configMgr.SaveProvider("gemini", gemCfg)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "message": "Configuration saved and hot-reloaded successfully."})
+}
+
+func handleGetSandbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := configMgr.Get()
+
+	// Simple check if WSL is setup (look for a folder like cache/wsl_home or check environment)
+	wslSetupPath := filepath.Join(dataDirectory, "cache", "wsl_home")
+	_, err := os.Stat(wslSetupPath)
+	wslSetupDone := (err == nil)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"sandboxing_enabled": cfg.Features.Sandboxing,
+		"wsl_installed":      wslSetupDone,
+		"cache_dir":          filepath.Join(dataDirectory, "cache"),
+	})
+}
+
+func handleSetupSandbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Spin up setup in a non-blocking background goroutine
+	go func() {
+		log.Println("Starting background WSL sandbox setup from Web UI...")
+		if err := executor.SetupWSL(dataDirectory); err != nil {
+			log.Printf("WSL setup failed: %v\n", err)
+		} else {
+			log.Println("WSL setup finished successfully.")
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "message": "WSL sandbox setup has been started in the background."})
+}
+
+func handleGetPairings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	pairings, err := auth.GetPendingPairings()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(pairings)
+}
+
+type ApprovePairingReq struct {
+	Gateway string `json:"gateway"`
+	Code    string `json:"code"`
+}
+
+func handleApprovePairings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ApprovePairingReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	username, err := auth.ApprovePairing(req.Gateway, req.Code)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "username": username, "message": fmt.Sprintf("Successfully approved pairing for %s!", username)})
 }

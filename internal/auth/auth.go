@@ -278,3 +278,30 @@ func ClearPairings() error {
 	}
 	return nil
 }
+
+// GetPendingPairings returns a list of all currently active pending pairing requests.
+func GetPendingPairings() ([]PendingPairing, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	d, err := getDBLocked()
+	if err != nil {
+		return nil, fmt.Errorf("failed to access database: %w", err)
+	}
+
+	rows, err := d.Query("SELECT code, gateway, user_id, username, created_at FROM pending_pairings ORDER BY created_at DESC")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query pending pairings: %w", err)
+	}
+	defer rows.Close()
+
+	var pairings []PendingPairing
+	for rows.Next() {
+		var p PendingPairing
+		if err := rows.Scan(&p.Code, &p.Gateway, &p.UserID, &p.Username, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan pending pairing row: %w", err)
+		}
+		pairings = append(pairings, p)
+	}
+	return pairings, nil
+}

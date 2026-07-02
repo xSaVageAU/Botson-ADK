@@ -3,29 +3,202 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Botson Web UI (OpenRouter)</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Space+Mono&display=swap" rel="stylesheet">
+    <title>Botson Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Space+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <header>
-        <h1>Botson</h1>
-        <span class="badge">OpenRouter Mode</span>
-    </header>
+    <div id="app-container">
+        <!-- Sidebar Navigation -->
+        <aside id="sidebar">
+            <div class="logo">
+                <h2>Botson</h2>
+                <span class="version">v2.0 Dashboard</span>
+            </div>
+            <nav>
+                <button class="nav-btn active" data-target="pane-chat">
+                    <span class="icon">💬</span> Chat Client
+                </button>
+                <button class="nav-btn" data-target="pane-config">
+                    <span class="icon">⚙️</span> Configuration
+                </button>
+                <button class="nav-btn" data-target="pane-sandbox">
+                    <span class="icon">📦</span> Sandbox Manager
+                </button>
+                <button class="nav-btn" data-target="pane-pairings">
+                    <span class="icon">🔌</span> Pending Pairings
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <span class="status-indicator online"></span> OpenRouter Mode
+            </div>
+        </aside>
 
-    <div id="chat-container">
-        <div class="message agent">
-            Hello! I am Botson, configured here specifically using OpenRouter. How can I assist you with your coding workspace tasks today?
-        </div>
+        <!-- Main Content Area -->
+        <main id="main-content">
+            <!-- 1. CHAT PANEL -->
+            <section id="pane-chat" class="tab-pane active">
+                <header class="pane-header">
+                    <h3>💬 Conversation Interface</h3>
+                    <p class="subtitle">Interact with the agent session directly.</p>
+                </header>
+                <div id="chat-container">
+                    <div class="message agent">
+                        Hello! I am Botson, configured here specifically using OpenRouter. How can I assist you with your coding workspace tasks today?
+                    </div>
+                </div>
+                <div id="input-container">
+                    <form id="input-form">
+                        <input type="text" id="message-input" placeholder="Type a message or command..." required autocomplete="off">
+                        <button type="submit" id="send-btn">Send</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- 2. CONFIG PANEL -->
+            <section id="pane-config" class="tab-pane">
+                <header class="pane-header">
+                    <h3>⚙️ System Configuration</h3>
+                    <p class="subtitle">Update core settings, provider details, and API keys.</p>
+                </header>
+                <div class="form-container">
+                    <form id="config-form">
+                        <!-- Active Provider -->
+                        <div class="form-group">
+                            <label for="cfg-provider">Active Provider</label>
+                            <select id="cfg-provider" required>
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="gemini">Gemini API</option>
+                            </select>
+                        </div>
+
+                        <!-- System Prompt / Instruction -->
+                        <div class="form-group">
+                            <label for="cfg-instruction">System Instruction</label>
+                            <textarea id="cfg-instruction" rows="4" required></textarea>
+                        </div>
+
+                        <!-- Discord Token -->
+                        <div class="form-group">
+                            <label for="cfg-discord-token">Discord Bot Token</label>
+                            <input type="password" id="cfg-discord-token" placeholder="Enter Discord Token...">
+                        </div>
+
+                        <!-- Feature Toggles -->
+                        <div class="form-group checkbox-group">
+                            <label>Features & Sandbox Permissions</label>
+                            <div class="toggle-card">
+                                <input type="checkbox" id="cfg-sandboxing">
+                                <label for="cfg-sandboxing">
+                                    <strong>Enable Sandbox Isolation</strong>
+                                    <span>Run compiler and tools inside isolated WSL/gVisor namespaces.</span>
+                                </label>
+                            </div>
+                            <div class="toggle-card">
+                                <input type="checkbox" id="cfg-services">
+                                <label for="cfg-services">
+                                    <strong>Enable Service Supervisor</strong>
+                                    <span>Allow the agent to spin up and monitor background worker processes.</span>
+                                </label>
+                            </div>
+                            <div class="toggle-card">
+                                <input type="checkbox" id="cfg-coder">
+                                <label for="cfg-coder">
+                                    <strong>Enable File Editor Tools</strong>
+                                    <span>Grant permissions to search, edit, and read files in the workspace.</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- OpenRouter Settings -->
+                        <div class="fieldset">
+                            <h4>OpenRouter Settings</h4>
+                            <div class="form-group">
+                                <label for="cfg-or-model">Model Name</label>
+                                <input type="text" id="cfg-or-model" placeholder="e.g. openrouter/owl-alpha">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-or-key">API Key</label>
+                                <input type="password" id="cfg-or-key" placeholder="Enter OpenRouter API Key...">
+                            </div>
+                        </div>
+
+                        <!-- Gemini Settings -->
+                        <div class="fieldset">
+                            <h4>Gemini API Settings</h4>
+                            <div class="form-group">
+                                <label for="cfg-gemini-model">Model Name</label>
+                                <input type="text" id="cfg-gemini-model" placeholder="e.g. gemini-2.5-flash">
+                            </div>
+                            <div class="form-group">
+                                <label for="cfg-gemini-key">API Key</label>
+                                <input type="password" id="cfg-gemini-key" placeholder="Enter Gemini API Key...">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="submit-btn">Save Configurations</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- 3. SANDBOX PANEL -->
+            <section id="pane-sandbox" class="tab-pane">
+                <header class="pane-header">
+                    <h3>📦 Sandbox Manager</h3>
+                    <p class="subtitle">Monitor isolated container environments and execution namespaces.</p>
+                </header>
+                <div class="dashboard-grid">
+                    <div class="status-card">
+                        <h5>Sandboxing Status</h5>
+                        <div id="sb-status-text" class="status-value">Loading...</div>
+                        <p class="desc">Is standard WSL filesystem containment active?</p>
+                    </div>
+                    <div class="status-card">
+                        <h5>WSL Provision Check</h5>
+                        <div id="sb-wsl-text" class="status-value">Checking...</div>
+                        <p class="desc">Has the local isolated WSL instance been set up?</p>
+                    </div>
+                    <div class="status-card">
+                        <h5>Workspace Directory Cache</h5>
+                        <div id="sb-cache-text" class="status-value monospace">Loading...</div>
+                        <p class="desc">Target path used for storing sandboxed command outputs.</p>
+                    </div>
+                </div>
+
+                <div class="action-panel">
+                    <h4>Actions & Setup Utilities</h4>
+                    <p class="desc">If WSL is not yet set up, trigger the automatic downloader and provisioner script below.</p>
+                    <button id="btn-wsl-setup" class="action-btn">Install & Provision WSL Sandbox</button>
+                </div>
+            </section>
+
+            <!-- 4. PAIRINGS PANEL -->
+            <section id="pane-pairings" class="tab-pane">
+                <header class="pane-header">
+                    <h3>🔌 Pending Pairings</h3>
+                    <p class="subtitle">Approve incoming gateway user connection requests securely.</p>
+                </header>
+                <div class="table-container">
+                    <table id="pairings-table">
+                        <thead>
+                            <tr>
+                                <th>Platform</th>
+                                <th>User ID</th>
+                                <th>Username</th>
+                                <th>Pairing Code</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pairings-tbody">
+                            <tr>
+                                <td colspan="5" class="empty-state">No pending pairing approval requests found.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
     </div>
-
-    <div id="input-container">
-        <form id="input-form">
-            <input type="text" id="message-input" placeholder="Type a message or command..." required autocomplete="off">
-            <button type="submit" id="send-btn">Send</button>
-        </form>
-    </div>
-
     <script src="app.js"></script>
 </body>
 </html>
