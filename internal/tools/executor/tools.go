@@ -28,11 +28,23 @@ func cleanAndLimitOutput(out string) string {
 func MakeAllTools(mgr *executor.Manager) ([]tool.Tool, error) {
 	var list []tool.Tool
 
-	execTool, err := MakeExecTool(mgr)
+	runCommandTool, err := MakeRunCommandTool(mgr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make exec tool: %w", err)
+		return nil, fmt.Errorf("failed to make run_command tool: %w", err)
 	}
-	list = append(list, execTool)
+	list = append(list, runCommandTool)
+
+	grepSearchTool, err := MakeGrepSearchTool(mgr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make grep_search tool: %w", err)
+	}
+	list = append(list, grepSearchTool)
+
+	replaceFileContentTool, err := MakeReplaceFileContentTool(mgr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make replace_file_content tool: %w", err)
+	}
+	list = append(list, replaceFileContentTool)
 
 	writeFileTool, err := MakeWriteFileTool(mgr)
 	if err != nil {

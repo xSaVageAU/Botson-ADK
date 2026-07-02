@@ -17,10 +17,10 @@ type ExecArgs struct {
 	Cwd     string `json:"cwd,omitempty"`
 }
 
-// MakeExecTool creates the exec tool definition.
-func MakeExecTool(mgr *executor.Manager) (tool.Tool, error) {
+// MakeRunCommandTool creates the run_command tool definition.
+func MakeRunCommandTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
-		Name:        "exec",
+		Name:        "run_command",
 		Description: "Executes a shell command in the currently active environment (host OS or a sandbox). Use this to run commands, run tests, build projects, or query system status.",
 	}, func(ctx agent.Context, args ExecArgs) (string, error) {
 		cmdStr := strings.TrimSpace(args.Command)
