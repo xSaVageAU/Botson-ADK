@@ -57,6 +57,9 @@ func main() {
 	// 2. Intercept custom CLI commands (service, config, pairing)
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "help", "-h", "-help", "--help":
+			printUsage()
+			return
 		case "service":
 			if len(os.Args) > 2 && os.Args[2] == "start" {
 				runDaemon(ctx, mgr, cfg)
@@ -297,6 +300,21 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 }
 
 func handleConfigCommand(mgr *config.Manager, args []string) {
+	if len(args) < 1 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+		fmt.Println("Usage:")
+		fmt.Println("  botson config get <key>       - Print a configuration value")
+		fmt.Println("  botson config set <key> <val> - Set a configuration value")
+		fmt.Println("\nAvailable keys:")
+		fmt.Println("  provider             (openrouter, gemini)")
+		fmt.Println("  instruction          (custom system prompt)")
+		fmt.Println("  discord_token        (Discord bot credentials)")
+		fmt.Println("  features.sandboxing  (true/false - toggle WSL/gVisor sandboxing)")
+		fmt.Println("  features.services    (true/false - toggle background service manager)")
+		fmt.Println("  features.coder       (true/false - toggle file search and replace tools)")
+		fmt.Println("  <provider>.model     (e.g., gemini.model - target provider LLM model)")
+		fmt.Println("  <provider>.api_key   (e.g., openrouter.api_key - target API credentials)")
+		return
+	}
 	if len(args) < 2 {
 		log.Fatal("Invalid config command. Usage: botson config get <key> OR botson config set <key> <value>")
 	}
