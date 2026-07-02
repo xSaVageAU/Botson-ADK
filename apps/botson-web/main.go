@@ -225,7 +225,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		sessionID = "web:session"
 	}
 
-	events := agentRunner.Run(r.Context(), agentName, sessionID, &genai.Content{
+	events := agentRunner.Run(r.Context(), "user", sessionID, &genai.Content{
 		Role: "user",
 		Parts: []*genai.Part{
 			{Text: req.Message},
@@ -492,7 +492,7 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	res, err := sessService.List(r.Context(), &session.ListRequest{
 		AppName: agentName,
-		UserID:  "web:user",
+		UserID:  "user",
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
@@ -524,7 +524,7 @@ func handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	res, err := sessService.Create(r.Context(), &session.CreateRequest{
 		AppName: agentName,
-		UserID:  "web:user",
+		UserID:  "user",
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create session: %v", err), http.StatusInternalServerError)
@@ -551,7 +551,7 @@ func handleGetSession(w http.ResponseWriter, r *http.Request) {
 
 	res, err := sessService.Get(r.Context(), &session.GetRequest{
 		AppName:   agentName,
-		UserID:    "web:user",
+		UserID:    "user",
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -612,7 +612,7 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	err := sessService.Delete(r.Context(), &session.DeleteRequest{
 		AppName:   agentName,
-		UserID:    "web:user",
+		UserID:    "user",
 		SessionID: sessionID,
 	})
 	if err != nil {
