@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,7 +33,7 @@ type Manager struct {
 	mu       sync.RWMutex
 	path     string
 	dataDir  string
-	config   *Config
+	data     map[string]any
 	onReload []func(*Config)
 	stopChan chan struct{}
 }
@@ -75,25 +76,25 @@ func (m *Manager) Load() error {
 		return err
 	}
 
-	file, err := os.Open(m.path)
+	data, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Write default core config
-			m.config = &Config{
-				Provider:     "openrouter",
-				Instruction:  "You are Botson, a helpful AI assistant.",
-				DiscordToken: "YOUR_DISCORD_TOKEN",
-				Features: FeaturesConfig{
-					Sandboxing: true,
-					Services:   true,
-					Coder:      true,
+			// Write default core config map
+			m.data = map[string]any{
+				"provider":      "openrouter",
+				"instruction":   "You are Botson, a helpful AI assistant.",
+				"discord_token": "YOUR_DISCORD_TOKEN",
+				"features": map[string]any{
+					"sandboxing": true,
+					"services":   true,
+					"coder":      true,
 				},
 			}
-			data, err := json.MarshalIndent(m.config, "", "  ")
+			raw, err := json.MarshalIndent(m.data, "", "  ")
 			if err != nil {
 				return err
 			}
-			if err := os.WriteFile(m.path, data, 0644); err != nil {
+			if err := os.WriteFile(m.path, raw, 0644); err != nil {
 				return err
 			}
 
@@ -120,19 +121,12 @@ func (m *Manager) Load() error {
 		}
 		return err
 	}
-	defer file.Close()
 
-	var cfg Config
-	cfg.Features.Sandboxing = true
-	cfg.Features.Services = true
-	cfg.Features.Coder = true
-	if err := json.NewDecoder(file).Decode(&cfg); err != nil {
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
 		return err
 	}
-	if !cfg.Features.Sandboxing {
-		cfg.Features.Services = false
-	}
-	m.config = &cfg
+	m.data = parsed
 	return nil
 }
 
@@ -140,16 +134,25 @@ func (m *Manager) Load() error {
 func (m *Manager) Get() *Config {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return &Config{
-		Provider:     m.config.Provider,
-		Instruction:  m.config.Instruction,
-		DiscordToken: m.config.DiscordToken,
-		Features: FeaturesConfig{
-			Sandboxing: m.config.Features.Sandboxing,
-			Services:   m.config.Features.Services,
-			Coder:      m.config.Features.Coder,
-		},
+
+	// Convert map to JSON, then to Config struct
+	bytes, err := json.Marshal(m.data)
+	if err != nil {
+		return &Config{}
 	}
+
+	var cfg Config
+	cfg.Features.Sandboxing = true
+	cfg.Features.Services = true
+	cfg.Features.Coder = true
+
+	_ = json.Unmarshal(bytes, &cfg)
+
+	if !cfg.Features.Sandboxing {
+		cfg.Features.Services = false
+	}
+
+	return &cfg
 }
 
 // Save writes a new configuration to disk and updates the in-memory copy.
@@ -157,15 +160,116 @@ func (m *Manager) Save(cfg *Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
+	// Convert Config to JSON, then back to the map
+	bytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(m.path, data, 0644); err != nil {
+
+	var parsed map[string]any
+	if err := json.Unmarshal(bytes, &parsed); err != nil {
 		return err
 	}
-	m.config = cfg
-	return nil
+
+	// Update in-memory map
+	for k, v := range parsed {
+		m.data[k] = v
+	}
+
+	raw, err := json.MarshalIndent(m.data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(m.path, raw, 0644)
+}
+
+// GetNested retrieves a configuration value using dot notation (e.g. "features.sandboxing").
+func (m *Manager) GetNested(key string) any {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	parts := strings.Split(key, ".")
+	var current any = m.data
+
+	for _, part := range parts {
+		mMap, ok := current.(map[string]any)
+		if !ok {
+			return nil
+		}
+		current, ok = mMap[part]
+		if !ok {
+			return nil
+		}
+	}
+	return current
+}
+
+// GetString retrieves a configuration value as a string.
+func (m *Manager) GetString(key string) string {
+	val := m.GetNested(key)
+	if val == nil {
+		return ""
+	}
+	str, _ := val.(string)
+	return str
+}
+
+// GetBool retrieves a configuration value as a boolean.
+func (m *Manager) GetBool(key string) bool {
+	val := m.GetNested(key)
+	if val == nil {
+		return false
+	}
+	b, _ := val.(bool)
+	return b
+}
+
+// SetNested updates a configuration value using dot notation (e.g. "features.sandboxing").
+func (m *Manager) SetNested(key string, val any) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	parts := strings.Split(key, ".")
+	if len(parts) == 0 {
+		return fmt.Errorf("empty key")
+	}
+
+	var current any = m.data
+	for i := 0; i < len(parts)-1; i++ {
+		part := parts[i]
+		mMap, ok := current.(map[string]any)
+		if !ok {
+			return fmt.Errorf("path component %s is not a map", part)
+		}
+
+		next, ok := mMap[part]
+		if !ok {
+			next = make(map[string]any)
+			mMap[part] = next
+		}
+		current = next
+	}
+
+	lastKey := parts[len(parts)-1]
+	mMap, ok := current.(map[string]any)
+	if !ok {
+		return fmt.Errorf("final path component is not a map")
+	}
+
+	mMap[lastKey] = val
+
+	// Handle sandboxing cascades
+	if key == "features.sandboxing" && val == false {
+		if feat, ok := m.data["features"].(map[string]any); ok {
+			feat["services"] = false
+		}
+	}
+
+	raw, err := json.MarshalIndent(m.data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(m.path, raw, 0644)
 }
 
 // GetProvider retrieves configuration for a specific model provider.
@@ -253,12 +357,15 @@ func (m *Manager) StartWatcher() {
 						continue
 					}
 					m.mu.RLock()
-					cfg := m.config
+					// Generate *Config to trigger callback compatibility
+					cfgBytes, _ := json.Marshal(m.data)
+					var cfg Config
+					_ = json.Unmarshal(cfgBytes, &cfg)
 					callbacks := m.onReload
 					m.mu.RUnlock()
 
 					for _, cb := range callbacks {
-						cb(cfg)
+						cb(&cfg)
 					}
 				}
 			case <-m.stopChan:
