@@ -89,12 +89,6 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 				return nil, fmt.Errorf("tool %q is not runnable", t.Name())
 			}
 
-			sess := ctx.Session()
-			if sess == nil {
-				fmt.Printf("[Scheduler Debug] BeforeToolCallback: Session is nil for tool %q\n", t.Name())
-				return rt.Run(ctx, args)
-			}
-
 			q := getSessionQueue(ctx.SessionID())
 			q.mu.Lock()
 
@@ -110,6 +104,12 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 				functionCalls = q.functionCalls
 			} else {
 				// Fallback to database lookup if not found in memory cache
+				sess := ctx.Session()
+				if sess == nil {
+					fmt.Printf("[Scheduler Debug] Cache miss and database session is nil (blocked by toolContextWrapper). Executing immediately.\n")
+					q.mu.Unlock()
+					return rt.Run(ctx, args)
+				}
 				fmt.Printf("[Scheduler Debug] Cache miss! Falling back to database lookup...\n")
 				q.mu.Unlock()
 				events := sess.Events()
