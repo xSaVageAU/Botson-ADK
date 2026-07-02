@@ -22,11 +22,14 @@ import (
 	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/executor"
+	customplugin "botson/internal/plugin"
 	"botson/internal/prompt"
 	configtools "botson/internal/tools/config"
 	executortools "botson/internal/tools/executor"
 	timetools "botson/internal/tools/time"
 	"github.com/glebarez/sqlite"
+	"google.golang.org/adk/v2/runner"
+	adkplugin "google.golang.org/adk/v2/plugin"
 	"google.golang.org/adk/v2/session/database"
 	"strings"
 )
@@ -155,9 +158,17 @@ func main() {
 	}
 
 	// 6. Execute ADK Launcher
+	schedulerPlugin, err := customplugin.NewSequentialToolPlugin()
+	if err != nil {
+		log.Fatalf("Failed to create scheduler plugin: %v", err)
+	}
+
 	launcherConfig := &launcher.Config{
-		AgentLoader:    agent.NewSingleLoader(ag),
+		AgentLoader:  agent.NewSingleLoader(ag),
 		SessionService: sessSvc,
+		PluginConfig: runner.PluginConfig{
+			Plugins: []*adkplugin.Plugin{schedulerPlugin},
+		},
 	}
 
 	var args []string
@@ -252,7 +263,14 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
 
-	gm, err := gateways.NewGatewayManager(ag, sessSvc)
+	schedulerPlugin, err := customplugin.NewSequentialToolPlugin()
+	if err != nil {
+		log.Fatalf("Failed to create scheduler plugin: %v", err)
+	}
+
+	gm, err := gateways.NewGatewayManager(ag, sessSvc, runner.PluginConfig{
+		Plugins: []*adkplugin.Plugin{schedulerPlugin},
+	})
 	if err != nil {
 		log.Fatalf("Failed to initialize gateways: %v", err)
 	}

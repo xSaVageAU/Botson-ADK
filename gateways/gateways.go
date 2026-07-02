@@ -28,13 +28,14 @@ type GatewayManager struct {
 	stopChan       chan struct{}
 }
 
-// NewGatewayManager initializes the gateway runner with the active agent and session service.
-func NewGatewayManager(ag agent.Agent, sessSvc session.Service) (*GatewayManager, error) {
+// NewGatewayManager initializes the gateway runner with the active agent, session service, and plugins.
+func NewGatewayManager(ag agent.Agent, sessSvc session.Service, pluginConfig runner.PluginConfig) (*GatewayManager, error) {
 	r, err := runner.New(runner.Config{
 		AppName:           ag.Name(),
 		Agent:             ag,
 		SessionService:    sessSvc,
 		AutoCreateSession: true,
+		PluginConfig:      pluginConfig,
 	})
 	if err != nil {
 		return nil, err
