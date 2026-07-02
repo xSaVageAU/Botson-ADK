@@ -68,7 +68,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 			}
 			calls := getFunctionCalls(resp.Content)
 			if len(calls) > 0 {
-				q := getSessionQueue(ctx.Session().ID())
+				q := getSessionQueue(ctx.SessionID())
 				q.mu.Lock()
 				q.lastEventID = ctx.InvocationID()
 				q.functionCalls = calls
@@ -91,7 +91,7 @@ func NewSequentialToolPlugin() (*plugin.Plugin, error) {
 				return rt.Run(ctx, args)
 			}
 
-			q := getSessionQueue(sess.ID())
+			q := getSessionQueue(ctx.SessionID())
 			q.mu.Lock()
 
 			var lastLLMID string
