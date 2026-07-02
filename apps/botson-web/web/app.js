@@ -1,9 +1,126 @@
-let currentSessionId = '';
-
-// ─── Toast Notification System (replaces alert()) ────────────────────────────
+// ─── Page Stack Engine ────────────────────────────────────────────────────────
 
 /**
- * Show a non-blocking toast notification.
+ * Simple history-like page stack.
+ * Only "home" is the base; all others push on top of it.
+ */
+let currentScreen = 'screen-home';
+
+/**
+ * Navigate to a screen (push).
+ * @param {string} targetId  - The element ID of the destination screen.
+ * @param {Function} [onEnter] - Optional callback fired after the screen becomes active.
+ */
+function navigateTo(targetId, onEnter) {
+    if (targetId === currentScreen) return;
+
+    const prev = document.getElementById(currentScreen);
+    const next = document.getElementById(targetId);
+    if (!prev || !next) return;
+
+    // Push current screen back
+    prev.classList.remove('active');
+    prev.classList.add('pushed');
+
+    // Bring next screen in from the right
+    next.classList.remove('pushed');
+    next.classList.add('active');
+
+    currentScreen = targetId;
+    if (onEnter) {
+        // Wait for the CSS transition to mostly complete before running
+        setTimeout(onEnter, 120);
+    }
+}
+
+/**
+ * Navigate back to the home screen (pop).
+ */
+function navigateBack() {
+    if (currentScreen === 'screen-home') return;
+
+    const current = document.getElementById(currentScreen);
+    const home    = document.getElementById('screen-home');
+
+    current.classList.remove('active');
+    // Slide current screen out to the right
+    current.style.transition = 'transform 360ms cubic-bezier(0.4, 0, 0.2, 1), opacity 360ms cubic-bezier(0.4, 0, 0.2, 1)';
+    current.style.transform  = 'translateX(100%)';
+    current.style.opacity    = '0';
+
+    home.classList.remove('pushed');
+    home.classList.add('active');
+    currentScreen = 'screen-home';
+
+    // Reset the outgoing screen after transition
+    setTimeout(() => {
+        current.style.transition = '';
+        current.style.transform  = '';
+        current.style.opacity    = '';
+        current.classList.remove('active', 'pushed');
+    }, 380);
+
+    // Refresh home stats
+    refreshHomeStats();
+}
+
+// Wire up all app cards on the home screen
+document.querySelectorAll('.app-card[data-target]').forEach(card => {
+    card.addEventListener('click', () => {
+        const target = card.getAttribute('data-target');
+
+        // Decide what to fetch when entering each screen
+        const enterCallbacks = {
+            'screen-config':   loadConfig,
+            'screen-sandbox':  loadSandbox,
+            'screen-pairings': loadPairings,
+        };
+
+        navigateTo(target, enterCallbacks[target]);
+    });
+});
+
+// Wire up all back buttons
+document.querySelectorAll('[data-back]').forEach(btn => {
+    btn.addEventListener('click', navigateBack);
+});
+
+// ─── Home Stats ───────────────────────────────────────────────────────────────
+
+async function refreshHomeStats() {
+    // Sessions count
+    try {
+        const r = await fetch('/api/sessions');
+        const d = await r.json();
+        const el = document.getElementById('stat-sessions');
+        const count = Array.isArray(d) ? d.length : 0;
+        el.textContent = count;
+        el.className = 'stat-value ' + (count > 0 ? 'ok' : 'dim');
+    } catch { /* silent */ }
+
+    // Sandbox status
+    try {
+        const r = await fetch('/api/sandbox');
+        const d = await r.json();
+        const el = document.getElementById('stat-sandbox');
+        el.textContent = d.sandboxing_enabled ? 'On' : 'Off';
+        el.className   = 'stat-value ' + (d.sandboxing_enabled ? 'ok' : 'dim');
+    } catch { /* silent */ }
+
+    // Pending pairings count
+    try {
+        const r = await fetch('/api/pairings');
+        const d = await r.json();
+        const el = document.getElementById('stat-pairings');
+        const count = Array.isArray(d) ? d.length : 0;
+        el.textContent = count;
+        el.className   = 'stat-value ' + (count > 0 ? 'warn' : 'dim');
+    } catch { /* silent */ }
+}
+
+// ─── Toast Notifications ──────────────────────────────────────────────────────
+
+/**
  * @param {string} message
  * @param {'success'|'error'|'info'} type
  * @param {number} durationMs
@@ -14,49 +131,18 @@ function showToast(message, type = 'info', durationMs = 4000) {
     toast.classList.add('toast', type);
 
     const icons = { success: '✓', error: '✕', info: 'ℹ' };
-    toast.innerHTML = `<span class="toast-icon">${icons[type] ?? icons.info}</span><span>${message}</span>`;
-
+    toast.innerHTML = `<span class="toast-icon">${icons[type] ?? '•'}</span><span>${message}</span>`;
     container.appendChild(toast);
 
     setTimeout(() => {
-        toast.style.animation = 'toastOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards';
+        toast.style.animation = 'toastOut 300ms cubic-bezier(0.4, 0, 1, 1) forwards';
         toast.addEventListener('animationend', () => toast.remove(), { once: true });
     }, durationMs);
 }
 
-// ─── Tab / Navigation Logic ───────────────────────────────────────────────────
-
-const navBtns  = document.querySelectorAll('.nav-btn');
-const tabPanes = document.querySelectorAll('.tab-pane');
-
-navBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        const targetId = btn.getAttribute('data-target');
-
-        navBtns.forEach(b => {
-            b.classList.remove('active');
-            b.removeAttribute('aria-current');
-        });
-        tabPanes.forEach(p => p.classList.remove('active'));
-
-        btn.classList.add('active');
-        btn.setAttribute('aria-current', 'page');
-
-        const targetPane = document.getElementById(targetId);
-        if (targetPane) targetPane.classList.add('active');
-
-        // Fetch view-specific data
-        if (targetId === 'pane-config') {
-            loadConfig();
-        } else if (targetId === 'pane-sandbox') {
-            loadSandbox();
-        } else if (targetId === 'pane-pairings') {
-            loadPairings();
-        }
-    });
-});
-
 // ─── Chat Client ──────────────────────────────────────────────────────────────
+
+let currentSessionId = '';
 
 const form      = document.getElementById('input-form');
 const input     = document.getElementById('message-input');
@@ -68,8 +154,8 @@ form.addEventListener('submit', async (e) => {
     const text = input.value.trim();
     if (!text || !currentSessionId) return;
 
-    input.value    = '';
-    input.disabled = true;
+    input.value      = '';
+    input.disabled   = true;
     sendBtn.disabled = true;
 
     appendMessage(text, 'user');
@@ -84,7 +170,6 @@ form.addEventListener('submit', async (e) => {
             body: JSON.stringify({ message: text, session_id: currentSessionId })
         });
         const data = await response.json();
-
         typingIndicator.remove();
 
         if (data.error) {
@@ -109,9 +194,9 @@ function appendMessage(text, sender) {
 
     if (sender === 'agent') {
         let formatted = text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
             .replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
         const codeBlocks = formatted.split('```');
@@ -142,47 +227,152 @@ function showTypingIndicator() {
     return div;
 }
 
-// ─── Configuration Panel ──────────────────────────────────────────────────────
+// ─── Session Management ───────────────────────────────────────────────────────
+
+/**
+ * Render sessions as horizontal pill buttons in the chat session bar.
+ */
+async function loadSessions() {
+    const bar = document.getElementById('session-list');
+
+    // Keep the new-session button at the end
+    const newBtn = document.getElementById('btn-new-session');
+
+    // Remove all session pills (not the new-session button)
+    bar.querySelectorAll('.session-pill').forEach(p => p.remove());
+
+    try {
+        const response = await fetch('/api/sessions');
+        const data     = await response.json();
+
+        if (!data || data.length === 0) {
+            createSession();
+            return;
+        }
+
+        // Insert pills before the new-session button
+        data.forEach(s => {
+            const pill = document.createElement('div');
+            pill.classList.add('session-pill');
+            pill.setAttribute('role', 'listitem');
+            if (s.id === currentSessionId) pill.classList.add('active');
+            pill.setAttribute('data-id', s.id);
+
+            const label = document.createElement('span');
+            label.textContent = s.id.substring(0, 10) + '…';
+            pill.appendChild(label);
+
+            const delSpan = document.createElement('span');
+            delSpan.classList.add('session-pill-del');
+            delSpan.setAttribute('role', 'button');
+            delSpan.setAttribute('aria-label', 'Delete session');
+            delSpan.textContent = '✕';
+            delSpan.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSession(s.id);
+            });
+            pill.appendChild(delSpan);
+
+            pill.addEventListener('click', () => selectSession(s.id));
+            bar.insertBefore(pill, newBtn);
+        });
+
+        if (!currentSessionId && data.length > 0) {
+            selectSession(data[0].id);
+        }
+    } catch (err) {
+        console.error('Failed to load sessions', err);
+    }
+}
+
+async function createSession() {
+    try {
+        const response = await fetch('/api/sessions/create', { method: 'POST' });
+        const data     = await response.json();
+        currentSessionId = data.id;
+        await loadSessions();
+        container.innerHTML = '<div class="message agent">New session started! How can I assist you today?</div>';
+    } catch (err) {
+        console.error('Failed to create session', err);
+    }
+}
+
+async function selectSession(id) {
+    currentSessionId = id;
+
+    document.querySelectorAll('.session-pill').forEach(pill => {
+        pill.classList.toggle('active', pill.getAttribute('data-id') === id);
+    });
+
+    try {
+        const response = await fetch(`/api/sessions/get?id=${id}`);
+        const data     = await response.json();
+
+        container.innerHTML = '';
+        if (data.messages && data.messages.length > 0) {
+            data.messages.forEach(msg => appendMessage(msg.content, msg.role));
+        } else {
+            container.innerHTML = '<div class="message agent">Empty session. Ask me anything!</div>';
+        }
+        container.scrollTop = container.scrollHeight;
+    } catch (err) {
+        console.error('Failed to fetch session messages', err);
+    }
+}
+
+async function deleteSession(id) {
+    if (!confirm('Delete this chat session?')) return;
+    try {
+        await fetch(`/api/sessions/delete?id=${id}`, { method: 'DELETE' });
+        if (id === currentSessionId) currentSessionId = '';
+        await loadSessions();
+    } catch (err) {
+        console.error('Failed to delete session', err);
+    }
+}
+
+document.getElementById('btn-new-session').addEventListener('click', createSession);
+
+// ─── Configuration ────────────────────────────────────────────────────────────
 
 async function loadConfig() {
     try {
         const response = await fetch('/api/config');
         const data     = await response.json();
 
-        document.getElementById('cfg-provider').value       = data.provider || 'openrouter';
-        document.getElementById('cfg-instruction').value    = data.instruction || '';
-        document.getElementById('cfg-discord-token').value  = data.discord_token_masked || '';
+        document.getElementById('cfg-provider').value      = data.provider || 'openrouter';
+        document.getElementById('cfg-instruction').value   = data.instruction || '';
+        document.getElementById('cfg-discord-token').value = data.discord_token_masked || '';
 
-        document.getElementById('cfg-sandboxing').checked   = data.sandboxing || false;
-        document.getElementById('cfg-services').checked     = data.services   || false;
-        document.getElementById('cfg-coder').checked        = data.coder      || false;
+        document.getElementById('cfg-sandboxing').checked  = data.sandboxing || false;
+        document.getElementById('cfg-services').checked    = data.services   || false;
+        document.getElementById('cfg-coder').checked       = data.coder      || false;
 
-        document.getElementById('cfg-or-model').value       = data.openrouter_model    || '';
-        document.getElementById('cfg-or-key').value         = data.openrouter_key_mask || '';
+        document.getElementById('cfg-or-model').value      = data.openrouter_model    || '';
+        document.getElementById('cfg-or-key').value        = data.openrouter_key_mask || '';
 
-        document.getElementById('cfg-gemini-model').value   = data.gemini_model    || '';
-        document.getElementById('cfg-gemini-key').value     = data.gemini_key_mask || '';
+        document.getElementById('cfg-gemini-model').value  = data.gemini_model    || '';
+        document.getElementById('cfg-gemini-key').value    = data.gemini_key_mask || '';
     } catch (err) {
         console.error('Failed to load configuration', err);
         showToast('Failed to load configuration.', 'error');
     }
 }
 
-const configForm = document.getElementById('config-form');
-configForm.addEventListener('submit', async (e) => {
+document.getElementById('config-form').addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const payload = {
-        provider:        document.getElementById('cfg-provider').value,
-        instruction:     document.getElementById('cfg-instruction').value,
-        discord_token:   document.getElementById('cfg-discord-token').value,
-        sandboxing:      document.getElementById('cfg-sandboxing').checked,
-        services:        document.getElementById('cfg-services').checked,
-        coder:           document.getElementById('cfg-coder').checked,
+        provider:         document.getElementById('cfg-provider').value,
+        instruction:      document.getElementById('cfg-instruction').value,
+        discord_token:    document.getElementById('cfg-discord-token').value,
+        sandboxing:       document.getElementById('cfg-sandboxing').checked,
+        services:         document.getElementById('cfg-services').checked,
+        coder:            document.getElementById('cfg-coder').checked,
         openrouter_model: document.getElementById('cfg-or-model').value,
-        openrouter_key:  document.getElementById('cfg-or-key').value,
-        gemini_model:    document.getElementById('cfg-gemini-model').value,
-        gemini_key:      document.getElementById('cfg-gemini-key').value
+        openrouter_key:   document.getElementById('cfg-or-key').value,
+        gemini_model:     document.getElementById('cfg-gemini-model').value,
+        gemini_key:       document.getElementById('cfg-gemini-key').value,
     };
 
     try {
@@ -192,14 +382,14 @@ configForm.addEventListener('submit', async (e) => {
             body: JSON.stringify(payload)
         });
         const data = await response.json();
-        showToast(data.message || 'Configuration saved successfully!', 'success');
+        showToast(data.message || 'Configuration saved!', 'success');
         loadConfig();
     } catch (err) {
         showToast('Failed to save configuration.', 'error');
     }
 });
 
-// ─── Sandbox Panel ────────────────────────────────────────────────────────────
+// ─── Sandbox ──────────────────────────────────────────────────────────────────
 
 async function loadSandbox() {
     try {
@@ -207,11 +397,11 @@ async function loadSandbox() {
         const data     = await response.json();
 
         const statusEl = document.getElementById('sb-status-text');
-        statusEl.textContent = data.sandboxing_enabled ? 'Active (Isolated)' : 'Disabled';
+        statusEl.textContent = data.sandboxing_enabled ? 'Active' : 'Disabled';
         statusEl.className   = 'status-value ' + (data.sandboxing_enabled ? 'online' : 'offline');
 
         const wslEl = document.getElementById('sb-wsl-text');
-        wslEl.textContent = data.wsl_installed ? 'Installed (Provisioned)' : 'Not Installed';
+        wslEl.textContent = data.wsl_installed ? 'Provisioned' : 'Not Installed';
         wslEl.className   = 'status-value ' + (data.wsl_installed ? 'online' : 'offline');
 
         document.getElementById('sb-cache-text').textContent = data.cache_dir || 'N/A';
@@ -237,7 +427,7 @@ btnWslSetup.addEventListener('click', async () => {
     }
 });
 
-// ─── Pending Pairings Panel ───────────────────────────────────────────────────
+// ─── Pairings ─────────────────────────────────────────────────────────────────
 
 async function loadPairings() {
     const tbody = document.getElementById('pairings-tbody');
@@ -247,17 +437,23 @@ async function loadPairings() {
 
         tbody.innerHTML = '';
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No pending pairing approval requests found.</td></tr>';
+            tbody.innerHTML = `
+                <tr><td colspan="5" class="empty-state">
+                    <span class="empty-state-icon" aria-hidden="true">⊘</span>
+                    No pending pairing requests.
+                </td></tr>`;
             return;
         }
 
         data.forEach(p => {
             const tr = document.createElement('tr');
 
-            const tdGateway  = document.createElement('td'); tdGateway.textContent  = p.gateway;  tr.appendChild(tdGateway);
-            const tdUserID   = document.createElement('td'); tdUserID.textContent   = p.user_id;  tr.appendChild(tdUserID);
-            const tdUsername = document.createElement('td'); tdUsername.textContent = p.username; tr.appendChild(tdUsername);
-            const tdCode     = document.createElement('td'); tdCode.textContent     = p.code;     tr.appendChild(tdCode);
+            const cols = [p.gateway, p.user_id, p.username, p.code];
+            cols.forEach(text => {
+                const td = document.createElement('td');
+                td.textContent = text;
+                tr.appendChild(td);
+            });
 
             const tdActions  = document.createElement('td');
             const btnApprove = document.createElement('button');
@@ -270,12 +466,16 @@ async function loadPairings() {
             tbody.appendChild(tr);
         });
     } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Failed to query pending pairings.</td></tr>';
+        tbody.innerHTML = `
+            <tr><td colspan="5" class="empty-state">
+                <span class="empty-state-icon" aria-hidden="true">⊘</span>
+                Failed to load pairings.
+            </td></tr>`;
     }
 }
 
 async function approvePairing(gateway, code) {
-    if (!confirm(`Are you sure you want to approve user authorization code "${code}" on gateway "${gateway}"?`)) return;
+    if (!confirm(`Approve authorization code "${code}" on gateway "${gateway}"?`)) return;
 
     try {
         const response = await fetch('/api/pairings/approve', {
@@ -291,110 +491,14 @@ async function approvePairing(gateway, code) {
             showToast('Error: ' + data.message, 'error');
         }
     } catch (err) {
-        showToast('Failed to send pairing approval request.', 'error');
-    }
-}
-
-// ─── Session Management ───────────────────────────────────────────────────────
-
-async function loadSessions() {
-    const listContainer = document.getElementById('session-list');
-    try {
-        const response = await fetch('/api/sessions');
-        const data     = await response.json();
-
-        listContainer.innerHTML = '';
-        if (!data || data.length === 0) {
-            createSession();
-            return;
-        }
-
-        data.forEach(s => {
-            const btn = document.createElement('button');
-            btn.classList.add('session-item');
-            btn.setAttribute('role', 'listitem');
-            if (s.id === currentSessionId) btn.classList.add('active');
-            btn.setAttribute('data-id', s.id);
-
-            const label = document.createElement('span');
-            label.classList.add('session-item-label');
-            label.textContent = s.id.substring(0, 13) + '…';
-            btn.appendChild(label);
-
-            const btnDel = document.createElement('span');
-            btnDel.classList.add('session-item-delete');
-            btnDel.setAttribute('role', 'button');
-            btnDel.setAttribute('tabindex', '0');
-            btnDel.setAttribute('aria-label', 'Delete session');
-            btnDel.textContent = '✕';
-            btnDel.addEventListener('click', (e) => {
-                e.stopPropagation();
-                deleteSession(s.id);
-            });
-            btn.appendChild(btnDel);
-
-            btn.addEventListener('click', () => selectSession(s.id));
-            listContainer.appendChild(btn);
-        });
-
-        if (!currentSessionId && data.length > 0) {
-            selectSession(data[0].id);
-        }
-    } catch (err) {
-        console.error('Failed to load session list', err);
-    }
-}
-
-async function createSession() {
-    try {
-        const response = await fetch('/api/sessions/create', { method: 'POST' });
-        const data     = await response.json();
-        currentSessionId = data.id;
-
-        await loadSessions();
-        container.innerHTML = '<div class="message agent">New session started! How can I assist you today?</div>';
-    } catch (err) {
-        console.error('Failed to create new session', err);
-    }
-}
-
-async function selectSession(id) {
-    currentSessionId = id;
-
-    document.querySelectorAll('.session-item').forEach(item => {
-        item.classList.toggle('active', item.getAttribute('data-id') === id);
-    });
-
-    try {
-        const response = await fetch(`/api/sessions/get?id=${id}`);
-        const data     = await response.json();
-
-        container.innerHTML = '';
-        if (data.messages && data.messages.length > 0) {
-            data.messages.forEach(msg => appendMessage(msg.content, msg.role));
-        } else {
-            container.innerHTML = '<div class="message agent">Empty session. Ask me anything!</div>';
-        }
-        container.scrollTop = container.scrollHeight;
-    } catch (err) {
-        console.error('Failed to fetch session messages', err);
-    }
-}
-
-async function deleteSession(id) {
-    if (!confirm('Are you sure you want to delete this chat session?')) return;
-
-    try {
-        await fetch(`/api/sessions/delete?id=${id}`, { method: 'DELETE' });
-        if (id === currentSessionId) currentSessionId = '';
-        await loadSessions();
-    } catch (err) {
-        console.error('Failed to delete session', err);
+        showToast('Failed to send pairing approval.', 'error');
     }
 }
 
 // ─── Initialisation ───────────────────────────────────────────────────────────
 
-document.getElementById('btn-new-session').addEventListener('click', createSession);
-
+// Load sessions so chat is ready when user enters it
 loadSessions();
+
+// Populate home stats
+refreshHomeStats();
