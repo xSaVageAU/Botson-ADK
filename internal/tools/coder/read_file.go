@@ -37,6 +37,10 @@ func MakeReadFileTool(mgr *executor.Manager) (tool.Tool, error) {
 			resolvedPath = path
 		}
 
+		if IsPathRestricted(resolvedPath) {
+			return "", fmt.Errorf("permission denied: access to configuration directory is restricted")
+		}
+
 		data, err := target.ReadFile(resolvedPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to read file: %w", err)

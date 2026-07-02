@@ -44,6 +44,10 @@ func MakeRunCommandTool(mgr *executor.Manager) (tool.Tool, error) {
 			return "", fmt.Errorf("command cannot be empty")
 		}
 
+		if strings.Contains(strings.ToLower(cmdStr), ".botson-adk") {
+			return "", fmt.Errorf("permission denied: command contains restricted directory reference '.botson-adk'")
+		}
+
 		target := mgr.GetActiveTarget()
 		execCmd := cmdStr
 

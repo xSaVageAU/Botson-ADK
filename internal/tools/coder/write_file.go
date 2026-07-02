@@ -43,6 +43,10 @@ func MakeWriteFileTool(mgr *executor.Manager) (tool.Tool, error) {
 			resolvedPath = path
 		}
 
+		if IsPathRestricted(resolvedPath) {
+			return "", fmt.Errorf("permission denied: access to configuration directory is restricted")
+		}
+
 		err := target.WriteFile(resolvedPath, []byte(args.Content), perm)
 		if err != nil {
 			return "", fmt.Errorf("failed to write file: %w", err)

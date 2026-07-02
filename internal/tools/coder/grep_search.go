@@ -54,6 +54,10 @@ func MakeGrepSearchTool(mgr *executor.Manager) (tool.Tool, error) {
 			}
 		}
 
+		if IsPathRestricted(baseDir) {
+			return nil, fmt.Errorf("permission denied: access to configuration directory is restricted")
+		}
+
 		// Compile regex or match criteria
 		var re *regexp.Regexp
 		var err error
@@ -79,7 +83,7 @@ func MakeGrepSearchTool(mgr *executor.Manager) (tool.Tool, error) {
 			}
 			if d.IsDir() {
 				name := d.Name()
-				if name == ".git" || name == "build" || name == "node_modules" {
+				if name == ".git" || name == "build" || name == "node_modules" || name == ".botson-adk" {
 					return filepath.SkipDir
 				}
 				return nil
