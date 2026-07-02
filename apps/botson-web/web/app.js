@@ -1,3 +1,5 @@
+let currentSessionId = '';
+
 // Tab Switching logic
 const navBtns = document.querySelectorAll('.nav-btn');
 const tabPanes = document.querySelectorAll('.tab-pane');
@@ -35,7 +37,7 @@ const sendBtn = document.getElementById('send-btn');
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || !currentSessionId) return;
 
     input.value = '';
     input.disabled = true;
@@ -52,7 +54,7 @@ form.addEventListener('submit', async (e) => {
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            body: JSON.stringify({ message: text, session_id: currentSessionId })
         });
         const data = await response.json();
         
@@ -272,3 +274,123 @@ async function approvePairing(gateway, code) {
         alert('Failed to send pairing approval request.');
     }
 }
+
+// Session Management Helpers
+async function loadSessions() {
+    const listContainer = document.getElementById('session-list');
+    try {
+        const response = await fetch('/api/sessions');
+        const data = await response.json();
+        
+        listContainer.innerHTML = '';
+        if (!data || data.length === 0) {
+            // Start a new session automatically
+            createSession();
+            return;
+        }
+
+        // Render sessions
+        data.forEach(s => {
+            const btn = document.createElement('button');
+            btn.classList.add('session-item');
+            if (s.id === currentSessionId) {
+                btn.classList.add('active');
+            }
+            btn.setAttribute('data-id', s.id);
+            
+            const label = document.createElement('span');
+            label.classList.add('session-item-label');
+            label.textContent = s.id.substring(0, 13) + '...'; // Short friendly label
+            btn.appendChild(label);
+
+            const btnDel = document.createElement('span');
+            btnDel.classList.add('session-item-delete');
+            btnDel.textContent = '✕';
+            btnDel.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSession(s.id);
+            });
+            btn.appendChild(btnDel);
+
+            btn.addEventListener('click', () => {
+                selectSession(s.id);
+            });
+            listContainer.appendChild(btn);
+        });
+
+        // Set the active session to the first one if not set
+        if (!currentSessionId && data.length > 0) {
+            selectSession(data[0].id);
+        }
+    } catch (err) {
+        console.error('Failed to load session list', err);
+    }
+}
+
+async function createSession() {
+    try {
+        const response = await fetch('/api/sessions/create', { method: 'POST' });
+        const data = await response.json();
+        currentSessionId = data.id;
+        
+        // Refresh sidebar lists
+        await loadSessions();
+        // Clear chat view
+        container.innerHTML = '<div class="message agent">New session started! How can I assist you today?</div>';
+    } catch (err) {
+        console.error('Failed to create new session', err);
+    }
+}
+
+async function selectSession(id) {
+    currentSessionId = id;
+    
+    // Update visual active classes in sidebar
+    const items = document.querySelectorAll('.session-item');
+    items.forEach(item => {
+        if (item.getAttribute('data-id') === id) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+
+    try {
+        const response = await fetch(`/api/sessions/get?id=${id}`);
+        const data = await response.json();
+        
+        container.innerHTML = '';
+        if (data.messages && data.messages.length > 0) {
+            data.messages.forEach(msg => {
+                appendMessage(msg.content, msg.role);
+            });
+        } else {
+            container.innerHTML = '<div class="message agent">Empty session. Ask me anything!</div>';
+        }
+        container.scrollTop = container.scrollHeight;
+    } catch (err) {
+        console.error('Failed to fetch session messages', err);
+    }
+}
+
+async function deleteSession(id) {
+    if (!confirm('Are you sure you want to delete this chat session thread?')) {
+        return;
+    }
+
+    try {
+        await fetch(`/api/sessions/delete?id=${id}`, { method: 'DELETE' });
+        if (id === currentSessionId) {
+            currentSessionId = '';
+        }
+        await loadSessions();
+    } catch (err) {
+        console.error('Failed to delete session', err);
+    }
+}
+
+// Hook New Session Button
+document.getElementById('btn-new-session').addEventListener('click', createSession);
+
+// Initialize Sessions at Startup
+loadSessions();

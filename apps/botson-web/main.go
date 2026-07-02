@@ -13,11 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"google.golang.org/adk/v2/agent"
 	adkplugin "google.golang.org/adk/v2/plugin"
 	"google.golang.org/adk/v2/runner"
+	"google.golang.org/adk/v2/session"
 	"google.golang.org/adk/v2/session/database"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/genai"
@@ -42,10 +44,12 @@ var (
 	agentName     string
 	configMgr     *config.Manager
 	dataDirectory string
+	sessService   session.Service
 )
 
 type ChatRequest struct {
-	Message string `json:"message"`
+	Message   string `json:"message"`
+	SessionID string `json:"session_id"`
 }
 
 type ChatResponse struct {
@@ -84,6 +88,8 @@ func main() {
 	if err := database.AutoMigrate(sessSvc); err != nil {
 		log.Fatalf("Failed to migrate session database: %v", err)
 	}
+
+	sessService = sessSvc
 
 	// Force OpenRouter provider configurations for this specific web application
 	modelGetter := func() string {
@@ -177,6 +183,10 @@ func main() {
 	http.HandleFunc("/api/sandbox/setup", handleSetupSandbox)
 	http.HandleFunc("/api/pairings", handleGetPairings)
 	http.HandleFunc("/api/pairings/approve", handleApprovePairings)
+	http.HandleFunc("/api/sessions", handleListSessions)
+	http.HandleFunc("/api/sessions/create", handleCreateSession)
+	http.HandleFunc("/api/sessions/get", handleGetSession)
+	http.HandleFunc("/api/sessions/delete", handleDeleteSession)
 
 	port := ":8080"
 	log.Printf("Starting Botson Web UI on http://localhost%s using OpenRouter...\n", port)
@@ -210,7 +220,10 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionID := "web:session"
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = "web:session"
+	}
 
 	events := agentRunner.Run(r.Context(), agentName, sessionID, &genai.Content{
 		Role: "user",
@@ -469,4 +482,144 @@ func handleApprovePairings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "username": username, "message": fmt.Sprintf("Successfully approved pairing for %s!", username)})
+}
+
+func handleListSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	res, err := sessService.List(r.Context(), &session.ListRequest{
+		AppName: agentName,
+		UserID:  "web:user",
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type SessionInfo struct {
+		ID         string    `json:"id"`
+		LastUpdate time.Time `json:"last_update"`
+	}
+
+	list := []SessionInfo{}
+	for _, s := range res.Sessions {
+		list = append(list, SessionInfo{
+			ID:         s.ID(),
+			LastUpdate: s.LastUpdateTime(),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
+}
+
+func handleCreateSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	res, err := sessService.Create(r.Context(), &session.CreateRequest{
+		AppName: agentName,
+		UserID:  "web:user",
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create session: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": res.Session.ID(),
+	})
+}
+
+func handleGetSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionID := r.URL.Query().Get("id")
+	if sessionID == "" {
+		http.Error(w, "Missing session id", http.StatusBadRequest)
+		return
+	}
+
+	res, err := sessService.Get(r.Context(), &session.GetRequest{
+		AppName:   agentName,
+		UserID:    "web:user",
+		SessionID: sessionID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get session: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type Message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+
+	messages := []Message{}
+	for ev := range res.Session.Events().All() {
+		if ev.Content != nil {
+			var textBuilder strings.Builder
+			for _, part := range ev.Content.Parts {
+				if part.Text != "" {
+					textBuilder.WriteString(part.Text)
+				}
+			}
+			role := ev.Content.Role
+			if role == "" {
+				if ev.Author == "user" {
+					role = "user"
+				} else {
+					role = "model"
+				}
+			}
+			if role == "model" {
+				role = "agent"
+			}
+			messages = append(messages, Message{
+				Role:    role,
+				Content: textBuilder.String(),
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id":       res.Session.ID(),
+		"messages": messages,
+	})
+}
+
+func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionID := r.URL.Query().Get("id")
+	if sessionID == "" {
+		http.Error(w, "Missing session id", http.StatusBadRequest)
+		return
+	}
+
+	err := sessService.Delete(r.Context(), &session.DeleteRequest{
+		AppName:   agentName,
+		UserID:    "web:user",
+		SessionID: sessionID,
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to delete session: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success"})
 }
