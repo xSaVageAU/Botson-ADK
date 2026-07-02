@@ -27,7 +27,7 @@ type Manager struct {
 }
 
 // NewManager initializes a new environment manager.
-func NewManager(cacheDir string, netMode string) *Manager {
+func NewManager(cacheDir string, netMode string, sandboxingEnabled bool) *Manager {
 	nm := sandbox.NetworkMode(netMode)
 	if nm == "" {
 		nm = sandbox.NetworkDefault
@@ -39,14 +39,16 @@ func NewManager(cacheDir string, netMode string) *Manager {
 		sandboxes:    make(map[string]*sandbox.Sandbox),
 	}
 
-	// Load existing persistent sandboxes
-	rm := sandbox.NewRootfsManager(cacheDir)
-	if sbs, err := sandbox.LoadPersistentSessions(rm); err == nil {
-		for _, sb := range sbs {
-			mgr.sandboxes[sb.ID] = sb
-			if sb.AutoStart {
-				if err := sb.StartDaemon(mgr.netMode); err == nil {
-					_ = sb.StartAllAutoStartServices()
+	// Load existing persistent sandboxes if sandboxing is enabled
+	if sandboxingEnabled {
+		rm := sandbox.NewRootfsManager(cacheDir)
+		if sbs, err := sandbox.LoadPersistentSessions(rm); err == nil {
+			for _, sb := range sbs {
+				mgr.sandboxes[sb.ID] = sb
+				if sb.AutoStart {
+					if err := sb.StartDaemon(mgr.netMode); err == nil {
+						_ = sb.StartAllAutoStartServices()
+					}
 				}
 			}
 		}

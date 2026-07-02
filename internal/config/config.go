@@ -10,10 +10,17 @@ import (
 	"time"
 )
 
+type FeaturesConfig struct {
+	Sandboxing bool `json:"sandboxing"`
+	Services   bool `json:"services"`
+	Coder      bool `json:"coder"`
+}
+
 type Config struct {
-	Provider     string `json:"provider"`
-	Instruction  string `json:"instruction"`
-	DiscordToken string `json:"discord_token"`
+	Provider     string         `json:"provider"`
+	Instruction  string         `json:"instruction"`
+	DiscordToken string         `json:"discord_token"`
+	Features     FeaturesConfig `json:"features"`
 }
 
 type ProviderConfig struct {
@@ -76,6 +83,11 @@ func (m *Manager) Load() error {
 				Provider:     "openrouter",
 				Instruction:  "You are Botson, a helpful AI assistant.",
 				DiscordToken: "YOUR_DISCORD_TOKEN",
+				Features: FeaturesConfig{
+					Sandboxing: true,
+					Services:   true,
+					Coder:      true,
+				},
 			}
 			data, err := json.MarshalIndent(m.config, "", "  ")
 			if err != nil {
@@ -111,8 +123,14 @@ func (m *Manager) Load() error {
 	defer file.Close()
 
 	var cfg Config
+	cfg.Features.Sandboxing = true
+	cfg.Features.Services = true
+	cfg.Features.Coder = true
 	if err := json.NewDecoder(file).Decode(&cfg); err != nil {
 		return err
+	}
+	if !cfg.Features.Sandboxing {
+		cfg.Features.Services = false
 	}
 	m.config = &cfg
 	return nil
@@ -126,6 +144,11 @@ func (m *Manager) Get() *Config {
 		Provider:     m.config.Provider,
 		Instruction:  m.config.Instruction,
 		DiscordToken: m.config.DiscordToken,
+		Features: FeaturesConfig{
+			Sandboxing: m.config.Features.Sandboxing,
+			Services:   m.config.Features.Services,
+			Coder:      m.config.Features.Coder,
+		},
 	}
 }
 

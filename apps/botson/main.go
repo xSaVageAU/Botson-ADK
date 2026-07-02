@@ -139,10 +139,10 @@ func main() {
 	}
 
 	// Initialize Executor Manager
-	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "")
+	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
 	defer execMgr.Close()
 
-	execTools, err := tools.MakeAllTools(execMgr)
+	execTools, err := tools.MakeAllTools(execMgr, cfg.Features)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
 	}
@@ -246,10 +246,10 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	}
 
 	// Initialize Executor Manager
-	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "")
+	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
 	defer execMgr.Close()
 
-	execTools, err := tools.MakeAllTools(execMgr)
+	execTools, err := tools.MakeAllTools(execMgr, cfg.Features)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
 	}
@@ -316,6 +316,20 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 
 	switch action {
 	case "get":
+		if providerName == "features" {
+			switch subKey {
+			case "sandboxing":
+				fmt.Println(cfg.Features.Sandboxing)
+			case "services":
+				fmt.Println(cfg.Features.Services)
+			case "coder":
+				fmt.Println(cfg.Features.Coder)
+			default:
+				log.Fatalf("Unknown configuration key: %s", key)
+			}
+			return
+		}
+
 		switch subKey {
 		case "provider":
 			if strings.Contains(key, ".") {
@@ -348,6 +362,29 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 			log.Fatal("Missing value. Usage: botson config set <key> <value>")
 		}
 		val := args[2]
+
+		if providerName == "features" {
+			valBool := (val == "true" || val == "1" || val == "yes" || val == "on")
+			switch subKey {
+			case "sandboxing":
+				cfg.Features.Sandboxing = valBool
+				if !valBool {
+					cfg.Features.Services = false
+				}
+			case "services":
+				cfg.Features.Services = valBool
+			case "coder":
+				cfg.Features.Coder = valBool
+			default:
+				log.Fatalf("Unknown configuration key: %s", key)
+			}
+			if err := mgr.Save(cfg); err != nil {
+				log.Fatalf("Failed to save configuration: %v", err)
+			}
+			fmt.Printf("Successfully updated %s to %t\n", key, valBool)
+			return
+		}
+
 		switch subKey {
 		case "provider":
 			if strings.Contains(key, ".") {

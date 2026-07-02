@@ -8,7 +8,7 @@ import (
 )
 
 func TestManagerHostDefaults(t *testing.T) {
-	mgr := NewManager("test_cache", "default")
+	mgr := NewManager("test_cache", "default", true)
 	defer mgr.Close()
 
 	if mgr.GetActiveID() != "host" {
@@ -36,7 +36,7 @@ func TestManagerHostDefaults(t *testing.T) {
 }
 
 func TestManagerHostExec(t *testing.T) {
-	mgr := NewManager("test_cache", "default")
+	mgr := NewManager("test_cache", "default", true)
 	defer mgr.Close()
 
 	target := mgr.GetActiveTarget()
@@ -55,7 +55,7 @@ func TestManagerHostExec(t *testing.T) {
 }
 
 func TestManagerSwitchAndValidation(t *testing.T) {
-	mgr := NewManager("test_cache", "default")
+	mgr := NewManager("test_cache", "default", true)
 	defer mgr.Close()
 
 	// Switch to host should always succeed
@@ -70,7 +70,7 @@ func TestManagerSwitchAndValidation(t *testing.T) {
 }
 
 func TestManagerSpawnAndConfigure(t *testing.T) {
-	mgr := NewManager("test_cache", "default")
+	mgr := NewManager("test_cache", "default", true)
 	defer mgr.Close()
 
 	// Spawn ephemeral sandbox (persist=false, autoStart=false)
@@ -98,7 +98,7 @@ func pointerTo[T any](v T) *T {
 }
 
 func TestManagerServiceRegistration(t *testing.T) {
-	mgr := NewManager("test_cache", "default")
+	mgr := NewManager("test_cache", "default", true)
 	defer mgr.Close()
 
 	// Spawn a persistent sandbox
