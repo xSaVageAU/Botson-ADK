@@ -2,21 +2,22 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/glebarez/sqlite"
-	"google.golang.org/adk/v2/agent"
-	"google.golang.org/adk/v2/cmd/launcher"
-	"google.golang.org/adk/v2/cmd/launcher/full"
 	adkplugin "google.golang.org/adk/v2/plugin"
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/session/database"
 	"google.golang.org/adk/v2/tool"
 
 	botsonAgent "botson/agent"
+	"botson/gateways"
+	"botson/gateways/discord"
+	"botson/gateways/telegram"
 	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/executor"
@@ -28,68 +29,19 @@ import (
 	"botson/providers"
 )
 
-func main() {
-	ctx := context.Background()
-	defer auth.CloseDB()
+func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
+	log.Println("Starting Botson Daemon...")
 
-	// 1. Resolve default configuration and data paths
-	cfgPath, dataDir, err := config.DefaultPaths()
+	// Clear any pending pairings from previous runs on startup
+	if err := auth.ClearPairings(); err != nil {
+		log.Printf("Warning: failed to clear pending pairings on startup: %v", err)
+	}
+
+	_, dataDir, err := config.DefaultPaths()
 	if err != nil {
 		log.Fatalf("Failed to resolve configuration paths: %v", err)
 	}
 
-	// Initialize configuration manager
-	mgr, err := config.NewManagerWithDataDir(cfgPath, dataDir)
-	if err != nil {
-		log.Fatalf("Failed to initialize configuration: %v", err)
-	}
-	cfg := mgr.Get()
-
-	// Set data directory for authorization and pairings
-	auth.SetDataDir(dataDir)
-
-	// 2. Intercept custom CLI commands (service, config, pairing)
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "help", "-h", "-help", "--help":
-			printUsage()
-			return
-		case "service":
-			if len(os.Args) > 2 && os.Args[2] == "start" {
-				runDaemon(ctx, mgr, cfg)
-				return
-			}
-			printUsage()
-			return
-		case "config":
-			handleConfigCommand(mgr, os.Args[2:])
-			return
-		case "pairing":
-			if len(os.Args) > 3 && os.Args[2] == "approve" {
-				if len(os.Args) < 5 {
-					log.Fatal("Usage: botson pairing approve <gateway> <code>")
-				}
-				gateway := os.Args[3]
-				code := os.Args[4]
-				username, err := auth.ApprovePairing(gateway, code)
-				if err != nil {
-					log.Fatalf("Failed to approve pairing: %v", err)
-				}
-				fmt.Printf("Successfully approved pairing for user %s on %s!\n", username, gateway)
-				return
-			}
-			printUsage()
-			return
-		case "wslsetup":
-			err := executor.SetupWSL(dataDir)
-			if err != nil {
-				log.Fatalf("Failed to setup WSL sandbox environment: %v", err)
-			}
-			return
-		}
-	}
-
-	// 3. Create the session service
 	dbPath := filepath.Join(dataDir, "botson.db")
 	sessSvc, err := database.NewSessionService(sqlite.Open(dbPath))
 	if err != nil {
@@ -115,10 +67,9 @@ func main() {
 		return ""
 	}
 
-	// 4. Initialize model provider
 	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
 	if err != nil {
-		log.Fatalf("Failed to initialize LLM provider: %v. Please configure a valid API key using 'botson config set api_key <value>'.", err)
+		log.Fatalf("Failed to initialize LLM provider: %v", err)
 	}
 
 	// 5. Initialize configuration tools
@@ -147,40 +98,41 @@ func main() {
 	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 	toolsList = append(toolsList, execTools...)
 
-	// 6. Create the agent
 	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction)
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, resolvedInstruction, toolsList)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
 	}
 
-	// 7. Execute ADK Launcher
 	schedulerPlugin, err := customplugin.NewSequentialToolPlugin()
 	if err != nil {
 		log.Fatalf("Failed to create scheduler plugin: %v", err)
 	}
 
-	launcherConfig := &launcher.Config{
-		AgentLoader:    agent.NewSingleLoader(ag),
-		SessionService: sessSvc,
-		PluginConfig: runner.PluginConfig{
-			Plugins: []*adkplugin.Plugin{schedulerPlugin},
-		},
+	gm, err := gateways.NewGatewayManager(ag, sessSvc, runner.PluginConfig{
+		Plugins: []*adkplugin.Plugin{schedulerPlugin},
+	})
+	if err != nil {
+		log.Fatalf("Failed to initialize gateways: %v", err)
 	}
 
-	var args []string
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "web":
-			// Activate the visual Web UI and REST API sublaunchers under the web launcher command
-			args = []string{"web", "webui", "api"}
-		default:
-			args = os.Args[1:]
-		}
-	}
+	gm.Register(discord.NewDiscordGateway(cfg.DiscordToken))
+	gm.Register(telegram.NewMockTelegramGateway())
 
-	l := full.NewLauncher()
-	if err := l.Execute(ctx, launcherConfig, args); err != nil {
-		log.Fatalf("Launcher execution error: %v", err)
-	}
+	gm.Start(ctx)
+	mgr.StartWatcher()
+
+	// Register config change listener to update settings on the fly
+	mgr.OnReload(func(newCfg *config.Config) {
+		log.Println("Reloading daemon settings from configuration...")
+	})
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+
+	log.Println("Stopping Botson Daemon...")
+	gm.Stop()
+	mgr.StopWatcher()
+	log.Println("Daemon stopped successfully.")
 }
