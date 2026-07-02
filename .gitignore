@@ -2,6 +2,8 @@
 *.exe
 botson.exe
 botson-linux
+build/
+
 
 # Ignore configuration files containing API keys
 config.json
