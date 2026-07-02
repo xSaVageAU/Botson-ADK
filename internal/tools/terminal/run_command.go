@@ -1,4 +1,4 @@
-package executortools
+package terminaltools
 
 import (
 	"fmt"
@@ -11,10 +11,26 @@ import (
 	"google.golang.org/adk/v2/tool/functiontool"
 )
 
-// ExecArgs holds arguments for the exec tool.
+// ExecArgs holds arguments for the run_command tool.
 type ExecArgs struct {
 	Command string `json:"command"`
 	Cwd     string `json:"cwd,omitempty"`
+}
+
+const maxOutputLen = 50000
+
+func cleanAndLimitOutput(out string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		if (r < 32 || r > 126) && r != '\n' && r != '\r' && r != '\t' {
+			return -1
+		}
+		return r
+	}, out)
+
+	if len(cleaned) > maxOutputLen {
+		return cleaned[:maxOutputLen] + "\n... [TRUNCATED]"
+	}
+	return cleaned
 }
 
 // MakeRunCommandTool creates the run_command tool definition.

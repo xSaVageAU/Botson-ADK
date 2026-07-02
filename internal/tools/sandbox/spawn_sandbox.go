@@ -1,4 +1,4 @@
-package executortools
+package sandboxtools
 
 import (
 	"fmt"
@@ -27,7 +27,6 @@ func MakeSpawnSandboxTool(mgr *executor.Manager) (tool.Tool, error) {
 	}, func(ctx agent.Context, args SpawnSandboxArgs) (string, error) {
 		id := strings.TrimSpace(args.ID)
 		if id == "" {
-			// Generate fallback ID
 			id = fmt.Sprintf("sb-%d", os.Getpid())
 		}
 

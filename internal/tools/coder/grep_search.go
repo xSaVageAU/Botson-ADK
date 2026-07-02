@@ -1,4 +1,4 @@
-package executortools
+package codertools
 
 import (
 	"bufio"

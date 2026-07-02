@@ -1,4 +1,4 @@
-package executortools
+package codertools
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"botson/internal/executor"
+	"botson/internal/sandbox"
 	"google.golang.org/adk/v2/agent"
 	"google.golang.org/adk/v2/tool"
 	"google.golang.org/adk/v2/tool/functiontool"
@@ -35,7 +36,14 @@ func MakeWriteFileTool(mgr *executor.Manager) (tool.Tool, error) {
 		}
 
 		target := mgr.GetActiveTarget()
-		err := target.WriteFile(path, []byte(args.Content), perm)
+		var resolvedPath string
+		if sb, ok := target.(*sandbox.Sandbox); ok {
+			resolvedPath = strings.TrimSpace(sb.RootfsPath + "/" + path)
+		} else {
+			resolvedPath = path
+		}
+
+		err := target.WriteFile(resolvedPath, []byte(args.Content), perm)
 		if err != nil {
 			return "", fmt.Errorf("failed to write file: %w", err)
 		}

@@ -25,7 +25,7 @@ import (
 	customplugin "botson/internal/plugin"
 	"botson/internal/prompt"
 	configtools "botson/internal/tools/config"
-	executortools "botson/internal/tools/executor"
+	"botson/internal/tools"
 	timetools "botson/internal/tools/time"
 	"github.com/glebarez/sqlite"
 	"google.golang.org/adk/v2/runner"
@@ -142,7 +142,7 @@ func main() {
 	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "")
 	defer execMgr.Close()
 
-	execTools, err := executortools.MakeAllTools(execMgr)
+	execTools, err := tools.MakeAllTools(execMgr)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
 	}
@@ -249,7 +249,7 @@ func runDaemon(ctx context.Context, mgr *config.Manager, cfg *config.Config) {
 	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "")
 	defer execMgr.Close()
 
-	execTools, err := executortools.MakeAllTools(execMgr)
+	execTools, err := tools.MakeAllTools(execMgr)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
 	}
