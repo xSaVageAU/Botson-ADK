@@ -1,6 +1,6 @@
 # Botson Core App
 
-This is the full core application package of the Botson agent. It uses the `adk-go` launcher framework to expose multiple frontends (TUI console, visual Web UI, HTTP REST API) and manages a background gateway supervisor.
+This is the full core application package of the Botson agent. It uses the `adk-go` launcher framework to expose multiple frontends (TUI console, visual Web UI, HTTP REST API) and runs the background gateway daemon.
 
 ---
 

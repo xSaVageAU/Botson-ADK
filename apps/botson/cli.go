@@ -18,7 +18,6 @@ func handleConfigCommand(mgr *config.Manager, args []string) {
 		fmt.Println("  instruction          (custom system prompt)")
 		fmt.Println("  discord_token        (Discord bot credentials)")
 		fmt.Println("  features.sandboxing  (true/false - toggle WSL/gVisor sandboxing)")
-		fmt.Println("  features.services    (true/false - toggle background service manager)")
 		fmt.Println("  features.coder       (true/false - toggle file search and replace tools)")
 		fmt.Println("  <provider>.model     (e.g., gemini.model - target provider LLM model)")
 		fmt.Println("  <provider>.api_key   (e.g., openrouter.api_key - target API credentials)")

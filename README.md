@@ -29,9 +29,8 @@ Configurations reside in `~/.botson-adk/config.json`. The configuration manager 
 
 - Base settings: `provider`, `instruction`
 - Secrets (safely blocked from agent reads): `discord_token`, `<provider>.api_key`
-- Feature toggles (cascading dependency resolver):
+- Feature toggles:
   - `features.sandboxing` (WSL / gVisor)
-  - `features.services` (Background service supervisor)
   - `features.coder` (File search & modification tools)
 
 ---
