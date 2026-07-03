@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -23,35 +22,15 @@ const (
 
 var WSLDistro = "botson-sandbox"
 
-type Service struct {
-	Name      string `json:"name"`
-	Command   string `json:"command"`
-	Cwd       string `json:"cwd,omitempty"`
-	AutoStart bool   `json:"auto_start,omitempty"`
-}
-
-type ServiceStatus struct {
-	Name      string `json:"name"`
-	Command   string `json:"command"`
-	Cwd       string `json:"cwd,omitempty"`
-	AutoStart bool   `json:"auto_start,omitempty"`
-	Status    string `json:"status"` // "running", "stopped", "failed"
-	LogPath   string `json:"log_path,omitempty"`
-}
-
 type Sandbox struct {
-	ID             string
-	BundlePath     string
-	RootfsPath     string
-	StatePath      string
-	RootfsMgr      *RootfsManager
-	Cmd            *exec.Cmd // Store the running daemon background process
-	NetMode        NetworkMode
-	Persist        bool
-	AutoStart      bool
-	Services       []Service
-	activeServices map[string]*exec.Cmd
-	servicesMu     sync.Mutex
+	ID         string
+	BundlePath string
+	RootfsPath string
+	StatePath  string
+	RootfsMgr  *RootfsManager
+	Cmd        *exec.Cmd // Store the running daemon background process
+	NetMode    NetworkMode
+	Persist    bool
 }
 
 // NewSessionSandbox initializes a persistent named sandbox session
@@ -69,13 +48,12 @@ func NewSessionSandbox(rootfsMgr *RootfsManager, sessionID string, persist bool)
 	rootfsPath := filepath.Join(home, ".botson-adk", "sessions", sessionID, "workspace")
 
 	s := &Sandbox{
-		ID:             sessionID,
-		BundlePath:     bundlePath,
-		RootfsPath:     rootfsPath,
-		StatePath:      statePath,
-		RootfsMgr:      rootfsMgr,
-		Persist:        persist,
-		activeServices: make(map[string]*exec.Cmd),
+		ID:         sessionID,
+		BundlePath: bundlePath,
+		RootfsPath: rootfsPath,
+		StatePath:  statePath,
+		RootfsMgr:  rootfsMgr,
+		Persist:    persist,
 	}
 
 	// Clean up any residual daemon configs/states in /tmp before booting to ensure a clean slate
@@ -493,16 +471,6 @@ func (s *Sandbox) ReadFile(path string) ([]byte, error) {
 
 // Close terminates the running background daemon and safely sweeps away all temporary bundle files
 func (s *Sandbox) Close() error {
-	s.servicesMu.Lock()
-	for name, cmd := range s.activeServices {
-		if cmd != nil && cmd.Process != nil {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-		}
-		delete(s.activeServices, name)
-	}
-	s.servicesMu.Unlock()
-
 	if s.Cmd != nil && s.Cmd.Process != nil {
 		_ = s.Cmd.Process.Kill()
 		_ = s.Cmd.Wait()
@@ -623,7 +591,7 @@ func translateToWSLPath(winPath string) (string, error) {
 	}
 	// Convert backslashes to forward slashes to prevent shell escaping issues in WSL command line execution
 	winPath = filepath.ToSlash(winPath)
-	cmd := exec.Command("wsl", "wslpath", "-u", winPath)
+	cmd := exec.Command("wsl", "-d", WSLDistro, "wslpath", "-u", winPath)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
@@ -640,195 +608,5 @@ func fallbackWinToWSLPath(winPath string) string {
 		return "/mnt/" + drive + "/" + tail
 	}
 	return strings.ReplaceAll(winPath, "\\", "/")
-}
-
-// StartService runs a registered service in the background, piping logs to sessions/<id>/logs/<name>.log
-func (s *Sandbox) StartService(name string) error {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
-
-	// Find the service definition
-	var svc *Service
-	for i := range s.Services {
-		if s.Services[i].Name == name {
-			svc = &s.Services[i]
-			break
-		}
-	}
-	if svc == nil {
-		return fmt.Errorf("service %q not registered in sandbox %q", name, s.ID)
-	}
-
-	// Initialize activeServices map if nil
-	if s.activeServices == nil {
-		s.activeServices = make(map[string]*exec.Cmd)
-	}
-
-	// Check if already running
-	if cmd, exists := s.activeServices[name]; exists && cmd != nil && cmd.Process != nil {
-		// Check if it's actually alive
-		if cmd.ProcessState == nil {
-			return nil // Already running
-		}
-	}
-
-	// Ensure the container daemon is running (triggers on-demand boot)
-	if s.Cmd == nil || s.Cmd.Process == nil {
-		if err := s.StartDaemon(s.NetMode); err != nil {
-			return fmt.Errorf("starting daemon before launching service: %w", err)
-		}
-		time.Sleep(1 * time.Second)
-	}
-
-	// Prepare directories on host
-	sessionDir := filepath.Dir(s.RootfsPath)
-	logsDir := filepath.Join(sessionDir, "logs")
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		return fmt.Errorf("creating logs directory: %w", err)
-	}
-
-	logFile, err := os.OpenFile(filepath.Join(logsDir, name+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("opening log file: %w", err)
-	}
-
-	// Resolve execute commands
-	statePath := s.StatePath
-	if runtime.GOOS == "windows" {
-		statePath = "/tmp/" + s.ID + "-state"
-	}
-
-	cmdFields := strings.Fields(svc.Command)
-	if len(cmdFields) == 0 {
-		logFile.Close()
-		return fmt.Errorf("empty command for service %q", name)
-	}
-
-	runscArgs := []string{
-		"--root", statePath,
-		"exec",
-	}
-	if svc.Cwd != "" {
-		runscArgs = append(runscArgs, "--cwd", svc.Cwd)
-	}
-	runscArgs = append(runscArgs, s.ID)
-	runscArgs = append(runscArgs, cmdFields...)
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		wslArgs := append([]string{"-d", WSLDistro, "runsc"}, runscArgs...)
-		cmd = exec.Command("wsl", wslArgs...)
-	} else {
-		runscPath, err := exec.LookPath("runsc")
-		if err != nil {
-			logFile.Close()
-			return fmt.Errorf("gVisor 'runsc' not found: %w", err)
-		}
-		cmd = exec.Command(runscPath, runscArgs...)
-	}
-
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-
-	// Write start log header
-	_, _ = fmt.Fprintf(logFile, "\n=== SERVICE START: %s (%s) ===\n", time.Now().Format(time.RFC3339), svc.Command)
-
-	if err := cmd.Start(); err != nil {
-		logFile.Close()
-		return fmt.Errorf("failed to start service command: %w", err)
-	}
-
-	s.activeServices[name] = cmd
-
-	// Wait asynchronously and release logs
-	go func() {
-		err := cmd.Wait()
-		logFile.Close()
-
-		s.servicesMu.Lock()
-		if reopenedLog, oerr := os.OpenFile(filepath.Join(logsDir, name+".log"), os.O_WRONLY|os.O_APPEND, 0644); oerr == nil {
-			if err != nil {
-				_, _ = fmt.Fprintf(reopenedLog, "=== SERVICE EXIT WITH ERROR: %s (%v) ===\n", time.Now().Format(time.RFC3339), err)
-			} else {
-				_, _ = fmt.Fprintf(reopenedLog, "=== SERVICE EXIT SUCCESS: %s ===\n", time.Now().Format(time.RFC3339))
-			}
-			reopenedLog.Close()
-		}
-		s.servicesMu.Unlock()
-	}()
-
-	return nil
-}
-
-// StopService terminates a running service
-func (s *Sandbox) StopService(name string) error {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
-
-	cmd, exists := s.activeServices[name]
-	if !exists || cmd == nil || cmd.Process == nil {
-		return fmt.Errorf("service %q is not running", name)
-	}
-
-	if cmd.ProcessState != nil {
-		delete(s.activeServices, name)
-		return nil // Already exited
-	}
-
-	err := cmd.Process.Kill()
-	_ = cmd.Wait() // Reclaim process resources
-	delete(s.activeServices, name)
-
-	return err
-}
-
-// ListServices lists the registered services and their statuses
-func (s *Sandbox) ListServices() ([]ServiceStatus, error) {
-	s.servicesMu.Lock()
-	defer s.servicesMu.Unlock()
-
-	sessionDir := filepath.Dir(s.RootfsPath)
-	logsDir := filepath.Join(sessionDir, "logs")
-
-	var result []ServiceStatus
-	for i := range s.Services {
-		svc := s.Services[i]
-		status := "stopped"
-		logPath := filepath.Join(logsDir, svc.Name+".log")
-
-		if s.activeServices != nil {
-			if cmd, exists := s.activeServices[svc.Name]; exists && cmd != nil && cmd.Process != nil {
-				if cmd.ProcessState == nil {
-					status = "running"
-				} else if !cmd.ProcessState.Success() {
-					status = "failed"
-				}
-			}
-		}
-
-		result = append(result, ServiceStatus{
-			Name:      svc.Name,
-			Command:   svc.Command,
-			Cwd:       svc.Cwd,
-			AutoStart: svc.AutoStart,
-			Status:    status,
-			LogPath:   logPath,
-		})
-	}
-
-	return result, nil
-}
-
-// StartAllAutoStartServices starts all registered services with AutoStart flag enabled
-func (s *Sandbox) StartAllAutoStartServices() error {
-	for i := range s.Services {
-		svc := s.Services[i]
-		if svc.AutoStart {
-			if err := s.StartService(svc.Name); err != nil {
-				fmt.Printf("Error starting autostart service %q inside sandbox %q: %v\n", svc.Name, s.ID, err)
-			}
-		}
-	}
-	return nil
 }
 
