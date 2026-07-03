@@ -241,6 +241,38 @@ func main() {
 	log.Println("Web server stopped successfully.")
 }
 
+type ToolCallInfo struct {
+	Name string `json:"name"`
+	Args string `json:"args"`
+}
+
+type ToolResponseInfo struct {
+	Name   string `json:"name"`
+	Output string `json:"output"`
+}
+
+type ChatEventChunk struct {
+	ID           string             `json:"id,omitempty"`
+	Author       string             `json:"author,omitempty"`
+	Text         string             `json:"text,omitempty"`
+	Thought      string             `json:"thought,omitempty"`
+	ToolCalls    []ToolCallInfo     `json:"tool_calls,omitempty"`
+	ToolResponse *ToolResponseInfo  `json:"tool_response,omitempty"`
+	Error        string             `json:"error,omitempty"`
+	Done         bool               `json:"done,omitempty"`
+}
+
+func sendChatChunk(w http.ResponseWriter, chunk ChatEventChunk) {
+	data, err := json.Marshal(chunk)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", string(data))
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 func handleChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -258,37 +290,70 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		sessionID = "web:session"
 	}
 
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
 	events := agentRunner.Run(r.Context(), "user", sessionID, &genai.Content{
 		Role: "user",
 		Parts: []*genai.Part{
 			{Text: req.Message},
 		},
 	}, agent.RunConfig{
-		StreamingMode: agent.StreamingModeNone,
+		StreamingMode: agent.StreamingModeSSE,
 	})
 
-	var result strings.Builder
-	var errText string
 	for ev, err := range events {
 		if err != nil {
-			errText = err.Error()
+			sendChatChunk(w, ChatEventChunk{Error: err.Error()})
 			break
 		}
+
+		var chunk ChatEventChunk
+		chunk.ID = ev.ID
+		chunk.Author = ev.Author
+
 		if ev.Content != nil {
 			for _, part := range ev.Content.Parts {
 				if part.Text != "" {
-					result.WriteString(part.Text)
+					if part.Thought {
+						chunk.Thought += part.Text
+					} else {
+						chunk.Text += part.Text
+					}
+				}
+				if part.FunctionCall != nil {
+					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					chunk.ToolCalls = append(chunk.ToolCalls, ToolCallInfo{
+						Name: part.FunctionCall.Name,
+						Args: string(argsBytes),
+					})
+				}
+				if part.FunctionResponse != nil {
+					var outputStr string
+					if outVal, ok := part.FunctionResponse.Response["output"]; ok {
+						outputStr = fmt.Sprintf("%v", outVal)
+					} else if errVal, ok := part.FunctionResponse.Response["error"]; ok {
+						outputStr = fmt.Sprintf("Error: %v", errVal)
+					} else {
+						respBytes, _ := json.Marshal(part.FunctionResponse.Response)
+						outputStr = string(respBytes)
+					}
+					chunk.ToolResponse = &ToolResponseInfo{
+						Name:   part.FunctionResponse.Name,
+						Output: outputStr,
+					}
 				}
 			}
 		}
+
+		if chunk.Text != "" || chunk.Thought != "" || len(chunk.ToolCalls) > 0 || chunk.ToolResponse != nil {
+			sendChatChunk(w, chunk)
+		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	resp := ChatResponse{
-		Response: result.String(),
-		Error:    errText,
-	}
-	_ = json.NewEncoder(w).Encode(resp)
+	sendChatChunk(w, ChatEventChunk{Done: true})
 }
 
 func handleGetConfig(w http.ResponseWriter, r *http.Request) {

@@ -170,14 +170,75 @@ form.addEventListener('submit', async (e) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: text, session_id: currentSessionId })
         });
-        const data = await response.json();
+
         typingIndicator.remove();
 
-        if (data.error) {
-            appendMessage('❌ Error: ' + data.error, 'agent');
-        } else {
-            await selectSession(currentSessionId);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        let currentAgentMessageDiv = null;
+        let currentAgentText = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // Keep incomplete line in buffer
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                
+                try {
+                    const chunk = JSON.parse(trimmed.slice(6));
+                    
+                    if (chunk.error) {
+                        appendMessage('❌ Error: ' + chunk.error, 'agent');
+                        continue;
+                    }
+
+                    if (chunk.done) {
+                        break;
+                    }
+
+                    // Handle tool calls
+                    if (chunk.tool_calls && chunk.tool_calls.length > 0) {
+                        for (const tc of chunk.tool_calls) {
+                            appendMessage(tc.args, 'tool_call', tc.name);
+                        }
+                        currentAgentMessageDiv = null; // Reset so subsequent text is in a new bubble
+                    }
+
+                    // Handle tool responses
+                    if (chunk.tool_response) {
+                        appendMessage(chunk.tool_response.output, 'tool_response', chunk.tool_response.name);
+                        currentAgentMessageDiv = null; // Reset so subsequent text is in a new bubble
+                    }
+
+                    // Handle streamed model text response
+                    if (chunk.text) {
+                        if (!currentAgentMessageDiv) {
+                            currentAgentMessageDiv = document.createElement('div');
+                            currentAgentMessageDiv.classList.add('message', 'agent');
+                            container.appendChild(currentAgentMessageDiv);
+                            currentAgentText = '';
+                        }
+                        currentAgentText += chunk.text;
+                        
+                        renderAgentText(currentAgentMessageDiv, currentAgentText);
+                        container.scrollTop = container.scrollHeight;
+                    }
+                } catch (err) {
+                    console.error('Error parsing SSE line', err);
+                }
+            }
         }
+
+        // Refresh fully resolved session messages from DB
+        await selectSession(currentSessionId);
     } catch (err) {
         typingIndicator.remove();
         appendMessage('❌ Connection error to the local server.', 'agent');
@@ -197,30 +258,34 @@ function escapeHTML(str) {
         .replace(/>/g, '&gt;');
 }
 
+function renderAgentText(div, text) {
+    let formatted = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    const codeBlocks = formatted.split('```');
+    let result = '';
+    for (let i = 0; i < codeBlocks.length; i++) {
+        if (i % 2 === 1) {
+            const lines = codeBlocks[i].split('\n');
+            const lang  = lines[0];
+            const code  = lines.slice(1).join('\n').trim();
+            result += `<pre><code class="language-${lang}">${code}</code></pre>`;
+        } else {
+            result += codeBlocks[i].replace(/\n/g, '<br>');
+        }
+    }
+    div.innerHTML = result;
+}
+
 function appendMessage(text, sender, toolName) {
     const div = document.createElement('div');
     div.classList.add('message', sender);
 
     if (sender === 'agent') {
-        let formatted = text
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-        const codeBlocks = formatted.split('```');
-        let result = '';
-        for (let i = 0; i < codeBlocks.length; i++) {
-            if (i % 2 === 1) {
-                const lines = codeBlocks[i].split('\n');
-                const lang  = lines[0];
-                const code  = lines.slice(1).join('\n').trim();
-                result += `<pre><code class="language-${lang}">${code}</code></pre>`;
-            } else {
-                result += codeBlocks[i].replace(/\n/g, '<br>');
-            }
-        }
-        div.innerHTML = result;
+        renderAgentText(div, text);
     } else if (sender === 'tool_call') {
         div.innerHTML = `<span style="opacity:0.8;">⚡</span> call: ${toolName}(${escapeHTML(text)})`;
     } else if (sender === 'tool_response') {
