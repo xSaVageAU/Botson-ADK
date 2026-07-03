@@ -107,7 +107,7 @@ func main() {
 		if pCfg != nil {
 			return pCfg.Model
 		}
-		return "openrouter/owl-alpha"
+		return "google/gemini-3.1-flash-lite"
 	}
 	apiKeyGetter := func() string {
 		pCfg, _ := mgr.GetProvider("openrouter")

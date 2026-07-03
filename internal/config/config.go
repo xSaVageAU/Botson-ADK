@@ -124,7 +124,7 @@ func (m *Manager) Load() error {
 			// Write default provider configs
 			openrouterCfg := &ProviderConfig{
 				APIKey: "YOUR_OPENROUTER_API_KEY",
-				Model:  "openrouter/owl-alpha",
+				Model:  "google/gemini-3.1-flash-lite",
 			}
 			orData, err := json.MarshalIndent(openrouterCfg, "", "  ")
 			if err == nil {
@@ -314,7 +314,7 @@ func (m *Manager) GetProvider(providerName string) (*ProviderConfig, error) {
 			defaultModel := ""
 			defaultAPIKey := ""
 			if providerName == "openrouter" {
-				defaultModel = "openrouter/owl-alpha"
+				defaultModel = "google/gemini-3.1-flash-lite"
 				defaultAPIKey = "YOUR_OPENROUTER_API_KEY"
 			} else if providerName == "gemini" {
 				defaultModel = "gemini-2.5-flash"

@@ -105,7 +105,7 @@ func (m *OpenRouterModel) GenerateContent(ctx context.Context, req *model.LLMReq
 			return
 		}
 		if modelName == "" {
-			modelName = "openrouter/owl-alpha"
+			modelName = "google/gemini-3.1-flash-lite"
 		}
 
 		// Extract tool declarations
