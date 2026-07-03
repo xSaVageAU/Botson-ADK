@@ -101,10 +101,9 @@ func (m *Manager) Load() error {
 	data, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Write default core config map
+			// Write default core config map (omit instruction)
 			m.data = map[string]any{
 				"provider":      "openrouter",
-				"instruction":   promptContent,
 				"discord_token": "YOUR_DISCORD_TOKEN",
 				"features": map[string]any{
 					"sandboxing": false,
@@ -118,6 +117,9 @@ func (m *Manager) Load() error {
 			if err := os.WriteFile(m.path, raw, 0644); err != nil {
 				return err
 			}
+
+			// Add instruction in memory after writing
+			m.data["instruction"] = promptContent
 
 			// Write default provider configs
 			openrouterCfg := &ProviderConfig{
@@ -202,7 +204,15 @@ func (m *Manager) Save(cfg *Config) error {
 		m.data[k] = v
 	}
 
-	raw, err := json.MarshalIndent(m.data, "", "  ")
+	// Make a copy of m.data to write to disk, deleting the "instruction" key
+	diskData := make(map[string]any)
+	for k, v := range m.data {
+		if k != "instruction" {
+			diskData[k] = v
+		}
+	}
+
+	raw, err := json.MarshalIndent(diskData, "", "  ")
 	if err != nil {
 		return err
 	}
