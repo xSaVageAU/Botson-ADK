@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 type RootfsManager struct {
@@ -272,82 +271,4 @@ func (rm *RootfsManager) copyFile(src, dst string, mode os.FileMode) error {
 
 	return nil
 }
-
-// SaveAsTemplate saves a copy of an active sandbox's rootfs as a custom template in the cache directory.
-func (rm *RootfsManager) SaveAsTemplate(srcDir, templateName string, overwrite bool) error {
-	arch := "x86_64"
-	if runtime.GOARCH == "arm64" {
-		arch = "aarch64"
-	}
-
-	templateDir := filepath.Join(rm.CacheDir, "template-"+templateName+"-"+arch)
-
-	if _, err := os.Stat(templateDir); err == nil {
-		if !overwrite {
-			return fmt.Errorf("a template named '%s' already exists. To overwrite it, pass overwrite=true", templateName)
-		}
-		// Clean up the existing template directory
-		if err := os.RemoveAll(templateDir); err != nil {
-			return fmt.Errorf("failed to remove existing template directory: %w", err)
-		}
-	}
-
-	if err := os.MkdirAll(templateDir, 0755); err != nil {
-		return fmt.Errorf("failed to create template directory: %w", err)
-	}
-
-	return rm.copyDirRecursive(srcDir, templateDir)
-}
-
-// CopyCustomTemplateTo copies a saved custom template from the cache to a target sandbox rootfs destination directory.
-func (rm *RootfsManager) CopyCustomTemplateTo(templateName string, destDir string) error {
-	arch := "x86_64"
-	if runtime.GOARCH == "arm64" {
-		arch = "aarch64"
-	}
-
-	templateDir := filepath.Join(rm.CacheDir, "template-"+templateName+"-"+arch)
-	if _, err := os.Stat(filepath.Join(templateDir, "bin")); os.IsNotExist(err) {
-		return fmt.Errorf("custom template '%s' not found or incomplete in cache", templateName)
-	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return fmt.Errorf("failed to create target rootfs directory: %w", err)
-	}
-
-	return rm.copyDirRecursive(templateDir, destDir)
-}
-
-// ListCustomTemplates scans the cache directory and returns the names of all custom templates
-func (rm *RootfsManager) ListCustomTemplates() ([]string, error) {
-	entries, err := os.ReadDir(rm.CacheDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	arch := "x86_64"
-	if runtime.GOARCH == "arm64" {
-		arch = "aarch64"
-	}
-	prefix := "template-"
-	suffix := "-" + arch
-
-	var templates []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := entry.Name()
-		if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix) {
-			tName := strings.TrimPrefix(name, prefix)
-			tName = strings.TrimSuffix(tName, suffix)
-			templates = append(templates, tName)
-		}
-	}
-	return templates, nil
-}
-
 
