@@ -578,27 +578,54 @@ func handleGetSession(w http.ResponseWriter, r *http.Request) {
 	messages := []Message{}
 	for ev := range res.Session.Events().All() {
 		if ev.Content != nil {
-			var textBuilder strings.Builder
 			for _, part := range ev.Content.Parts {
 				if part.Text != "" {
-					textBuilder.WriteString(part.Text)
+					role := ev.Content.Role
+					if role == "" {
+						if ev.Author == "user" {
+							role = "user"
+						} else {
+							role = "model"
+						}
+					}
+					if role == "model" {
+						role = "agent"
+					}
+					messages = append(messages, Message{
+						Role:    role,
+						Content: part.Text,
+					})
+				}
+				if part.FunctionCall != nil {
+					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					argsStr := string(argsBytes)
+					if argsStr == "{}" {
+						argsStr = ""
+					}
+					messages = append(messages, Message{
+						Role:    "tool_call",
+						Content: fmt.Sprintf("call: %s(%s)", part.FunctionCall.Name, argsStr),
+					})
+				}
+				if part.FunctionResponse != nil {
+					var respStr string
+					if part.FunctionResponse.Response != nil {
+						if rVal, exists := part.FunctionResponse.Response["result"]; exists {
+							respStr = fmt.Sprintf("%v", rVal)
+						} else if rVal, exists := part.FunctionResponse.Response["output"]; exists {
+							respStr = fmt.Sprintf("%v", rVal)
+						}
+					}
+					if respStr == "" {
+						respBytes, _ := json.Marshal(part.FunctionResponse.Response)
+						respStr = string(respBytes)
+					}
+					messages = append(messages, Message{
+						Role:    "tool_response",
+						Content: fmt.Sprintf("response (%s):\n%s", part.FunctionResponse.Name, respStr),
+					})
 				}
 			}
-			role := ev.Content.Role
-			if role == "" {
-				if ev.Author == "user" {
-					role = "user"
-				} else {
-					role = "model"
-				}
-			}
-			if role == "model" {
-				role = "agent"
-			}
-			messages = append(messages, Message{
-				Role:    role,
-				Content: textBuilder.String(),
-			})
 		}
 	}
 

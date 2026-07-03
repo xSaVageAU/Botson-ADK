@@ -175,7 +175,7 @@ form.addEventListener('submit', async (e) => {
         if (data.error) {
             appendMessage('❌ Error: ' + data.error, 'agent');
         } else {
-            appendMessage(data.response, 'agent');
+            await selectSession(currentSessionId);
         }
     } catch (err) {
         typingIndicator.remove();
@@ -212,6 +212,10 @@ function appendMessage(text, sender) {
             }
         }
         div.innerHTML = result;
+    } else if (sender === 'tool_call') {
+        div.innerHTML = `<span style="opacity:0.8;">⚡</span> ${text}`;
+    } else if (sender === 'tool_response') {
+        div.innerHTML = `<span style="opacity:0.8;color:var(--success);">✔</span> ${text.replace(/\n/g, '<br>')}`;
     } else {
         div.textContent = text;
     }
