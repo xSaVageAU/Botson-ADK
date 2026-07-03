@@ -84,7 +84,7 @@ func (m *Manager) Load() error {
 				"instruction":   "You are Botson, a helpful AI assistant.",
 				"discord_token": "YOUR_DISCORD_TOKEN",
 				"features": map[string]any{
-					"sandboxing": true,
+					"sandboxing": false,
 					"coder":      true,
 				},
 			}
@@ -140,7 +140,7 @@ func (m *Manager) Get() *Config {
 	}
 
 	var cfg Config
-	cfg.Features.Sandboxing = true
+	cfg.Features.Sandboxing = false
 	cfg.Features.Coder = true
 
 	_ = json.Unmarshal(bytes, &cfg)
@@ -250,13 +250,6 @@ func (m *Manager) SetNested(key string, val any) error {
 	}
 
 	mMap[lastKey] = val
-
-	// Handle sandboxing cascades
-	if key == "features.sandboxing" && val == false {
-		if feat, ok := m.data["features"].(map[string]any); ok {
-			feat["services"] = false
-		}
-	}
 
 	raw, err := json.MarshalIndent(m.data, "", "  ")
 	if err != nil {
