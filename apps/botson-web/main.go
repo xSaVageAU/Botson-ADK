@@ -571,8 +571,9 @@ func handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
+		Role     string `json:"role"`
+		Content  string `json:"content"`
+		ToolName string `json:"tool_name,omitempty"`
 	}
 
 	messages := []Message{}
@@ -603,8 +604,9 @@ func handleGetSession(w http.ResponseWriter, r *http.Request) {
 						argsStr = ""
 					}
 					messages = append(messages, Message{
-						Role:    "tool_call",
-						Content: fmt.Sprintf("call: %s(%s)", part.FunctionCall.Name, argsStr),
+						Role:     "tool_call",
+						Content:  argsStr,
+						ToolName: part.FunctionCall.Name,
 					})
 				}
 				if part.FunctionResponse != nil {
@@ -621,8 +623,9 @@ func handleGetSession(w http.ResponseWriter, r *http.Request) {
 						respStr = string(respBytes)
 					}
 					messages = append(messages, Message{
-						Role:    "tool_response",
-						Content: fmt.Sprintf("response (%s):\n%s", part.FunctionResponse.Name, respStr),
+						Role:     "tool_response",
+						Content:  respStr,
+						ToolName: part.FunctionResponse.Name,
 					})
 				}
 			}

@@ -188,7 +188,15 @@ form.addEventListener('submit', async (e) => {
     }
 });
 
-function appendMessage(text, sender) {
+function escapeHTML(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function appendMessage(text, sender, toolName) {
     const div = document.createElement('div');
     div.classList.add('message', sender);
 
@@ -213,9 +221,14 @@ function appendMessage(text, sender) {
         }
         div.innerHTML = result;
     } else if (sender === 'tool_call') {
-        div.innerHTML = `<span style="opacity:0.8;">⚡</span> ${text}`;
+        div.innerHTML = `<span style="opacity:0.8;">⚡</span> call: ${toolName}(${escapeHTML(text)})`;
     } else if (sender === 'tool_response') {
-        div.innerHTML = `<span style="opacity:0.8;color:var(--success);">✔</span> ${text.replace(/\n/g, '<br>')}`;
+        div.innerHTML = `
+            <details>
+                <summary><span style="opacity:0.8;color:var(--success);">✔</span> response (${toolName})</summary>
+                <pre>${escapeHTML(text)}</pre>
+            </details>
+        `;
     } else {
         div.textContent = text;
     }
@@ -314,7 +327,7 @@ async function selectSession(id) {
 
         container.innerHTML = '';
         if (data.messages && data.messages.length > 0) {
-            data.messages.forEach(msg => appendMessage(msg.content, msg.role));
+            data.messages.forEach(msg => appendMessage(msg.content, msg.role, msg.tool_name));
         } else {
             container.innerHTML = '<div class="message agent">Empty session. Ask me anything!</div>';
         }
