@@ -142,3 +142,18 @@ func (m *Manager) SetSandboxing(enabled bool) error {
 func (m *Manager) Close() error {
 	return m.stopSandbox()
 }
+
+// GetSandboxTarget returns the sandbox instance, lazy-starting it if not already running.
+func (m *Manager) GetSandboxTarget() (*sandbox.Sandbox, error) {
+	m.mu.Lock()
+	if m.sandboxTarget != nil {
+		defer m.mu.Unlock()
+		return m.sandboxTarget, nil
+	}
+	m.mu.Unlock()
+
+	err := m.startSandbox()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sandboxTarget, err
+}

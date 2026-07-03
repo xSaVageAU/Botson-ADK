@@ -126,7 +126,12 @@ func (s *Sandbox) Run(args []string, isTerminal bool, netMode NetworkMode) error
 		var err error
 		runscPath, err = exec.LookPath("runsc")
 		if err != nil {
-			return fmt.Errorf("gVisor 'runsc' command not found. Please install runsc (see README.md for instructions)")
+			localPath := filepath.Join(s.RootfsMgr.CacheDir, "runsc")
+			if _, errLocal := os.Stat(localPath); errLocal == nil {
+				runscPath = localPath
+			} else {
+				return fmt.Errorf("gVisor 'runsc' command not found. Please install runsc or run sandbox setup")
+			}
 		}
 	}
 
@@ -284,7 +289,12 @@ func (s *Sandbox) StartDaemon(netMode NetworkMode) error {
 		var err error
 		runscPath, err = exec.LookPath("runsc")
 		if err != nil {
-			return fmt.Errorf("gVisor 'runsc' command not found")
+			localPath := filepath.Join(s.RootfsMgr.CacheDir, "runsc")
+			if _, errLocal := os.Stat(localPath); errLocal == nil {
+				runscPath = localPath
+			} else {
+				return fmt.Errorf("gVisor 'runsc' command not found. Please install runsc or run sandbox setup")
+			}
 		}
 	}
 
@@ -407,7 +417,12 @@ func (s *Sandbox) Exec(command string) (string, string, int, error) {
 		var err error
 		runscPath, err = exec.LookPath("runsc")
 		if err != nil {
-			return "", "", -1, fmt.Errorf("gVisor 'runsc' command not found")
+			localPath := filepath.Join(s.RootfsMgr.CacheDir, "runsc")
+			if _, errLocal := os.Stat(localPath); errLocal == nil {
+				runscPath = localPath
+			} else {
+				return "", "", -1, fmt.Errorf("gVisor 'runsc' command not found")
+			}
 		}
 	}
 

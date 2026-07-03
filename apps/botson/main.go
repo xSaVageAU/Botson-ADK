@@ -16,6 +16,8 @@ import (
 	"google.golang.org/adk/v2/session/database"
 	"google.golang.org/adk/v2/tool"
 
+	"strings"
+
 	botsonAgent "botson/agent"
 	"botson/internal/auth"
 	"botson/internal/config"
@@ -80,10 +82,29 @@ func main() {
 			}
 			printUsage()
 			return
-		case "wslsetup":
-			err := executor.SetupWSL(dataDir)
+		case "wslsetup", "setup":
+			if len(os.Args) > 2 && os.Args[2] == "test" {
+				fmt.Println("Running containment verification test...")
+				execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", true)
+				defer execMgr.Close()
+				target := execMgr.GetActiveTarget()
+				if target.Type() != "sandbox" {
+					log.Fatal("Verification failed: sandbox environment could not be initialized")
+				}
+				stdout, stderr, exitCode, err := target.Exec("echo 'Hello gVisor Sandbox!'")
+				if err != nil {
+					log.Fatalf("Containment test execution failed: %v\nStderr: %s", err, stderr)
+				}
+				if exitCode != 0 || !strings.Contains(stdout, "Hello gVisor Sandbox") {
+					log.Fatalf("Containment test failed (exit code %d). Output: %s\nStderr: %s", exitCode, stdout, stderr)
+				}
+				fmt.Printf("✅ Containment test successful!\nOutput: %s", strings.TrimSpace(stdout))
+				return
+			}
+
+			err := executor.SetupSandbox(dataDir)
 			if err != nil {
-				log.Fatalf("Failed to setup WSL sandbox environment: %v", err)
+				log.Fatalf("Failed to setup sandbox environment: %v", err)
 			}
 			return
 		}
@@ -140,6 +161,27 @@ func main() {
 	timeTool, err := timetools.MakeGetTimeTool()
 	if err != nil {
 		log.Fatalf("Failed to create get_time tool: %v", err)
+	}
+
+	if cfg.Features.Sandboxing && !executor.IsSandboxSetup(dataDir) {
+		fmt.Printf("⚠️ Sandboxing is enabled in configuration, but the sandbox environment is not yet set up.\n")
+		fmt.Printf("Would you like to automatically download and configure the sandbox now? (y/N): ")
+		var answer string
+		_, err := fmt.Scanln(&answer)
+		if err == nil {
+			answer = strings.ToLower(strings.TrimSpace(answer))
+			if answer == "y" || answer == "yes" {
+				fmt.Println("Starting sandbox setup...")
+				if err := executor.SetupSandbox(dataDir); err != nil {
+					log.Fatalf("Sandbox setup failed: %v", err)
+				}
+				fmt.Println("Sandbox setup completed successfully! Continuing startup...")
+			} else {
+				fmt.Println("Skipping sandbox setup. Sandboxed execution may fail if runsc is not installed globally.")
+			}
+		} else {
+			fmt.Println("Skipping sandbox setup (non-interactive).")
+		}
 	}
 
 	// Initialize Executor Manager

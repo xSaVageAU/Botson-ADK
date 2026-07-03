@@ -105,6 +105,7 @@ async function refreshHomeStats() {
         const el = document.getElementById('stat-sandbox');
         el.textContent = d.sandboxing_enabled ? 'On' : 'Off';
         el.className   = 'stat-value ' + (d.sandboxing_enabled ? 'ok' : 'dim');
+        updateContainmentBadge(d);
     } catch { /* silent */ }
 
     // Pending pairings count
@@ -406,20 +407,126 @@ document.getElementById('config-form').addEventListener('submit', async (e) => {
 
 // ─── Sandbox ──────────────────────────────────────────────────────────────────
 
+let setupPollingInterval = null;
+
+function updateContainmentBadge(data) {
+    const badgeEl = document.getElementById('containment-badge');
+    const badgeLabelEl = document.getElementById('containment-label');
+    if (!badgeEl) return;
+    
+    if (data.sandboxing_enabled) {
+        badgeEl.style.display = 'flex';
+        if (data.active_target === 'sandbox') {
+            badgeEl.style.background = 'var(--warning-bg)';
+            badgeEl.style.borderColor = 'rgba(251, 191, 36, 0.20)';
+            badgeEl.style.color = 'var(--warning)';
+            badgeEl.querySelector('.status-pill-dot').style.background = 'var(--warning)';
+            badgeLabelEl.textContent = 'Sandbox';
+        } else {
+            badgeEl.style.background = 'rgba(124, 136, 153, 0.08)';
+            badgeEl.style.borderColor = 'rgba(124, 136, 153, 0.20)';
+            badgeEl.style.color = 'var(--text-secondary)';
+            badgeEl.querySelector('.status-pill-dot').style.background = 'var(--text-secondary)';
+            badgeLabelEl.textContent = 'Host';
+        }
+    } else {
+        badgeEl.style.display = 'none';
+    }
+}
+
+function startSetupPolling() {
+    const logsContainer = document.getElementById('setup-logs-container');
+    const logsEl = document.getElementById('setup-logs');
+    logsContainer.style.display = 'block';
+
+    if (setupPollingInterval) clearInterval(setupPollingInterval);
+
+    setupPollingInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/api/sandbox/setup/status');
+            const data = await res.json();
+
+            if (data.logs && data.logs.length > 0) {
+                logsEl.textContent = data.logs.join('\n');
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+
+            if (!data.running) {
+                clearInterval(setupPollingInterval);
+                setupPollingInterval = null;
+                const btnWslSetup = document.getElementById('btn-wsl-setup');
+                btnWslSetup.disabled = false;
+                loadSandbox();
+
+                if (data.success) {
+                    showToast('Sandbox setup finished successfully!', 'success');
+                } else if (data.error) {
+                    showToast(`Sandbox setup failed: ${data.error}`, 'error');
+                }
+            }
+        } catch (err) {
+            console.error('Error polling setup status', err);
+        }
+    }, 1500);
+}
+
 async function loadSandbox() {
     try {
         const response = await fetch('/api/sandbox');
         const data     = await response.json();
+
+        const isWindows = (data.os === 'windows');
+
+        // Dynamic OS adaptations
+        const statusLabelEl = document.querySelector('#screen-sandbox .status-card:nth-child(1) .status-card-label');
+        const statusDescEl = document.querySelector('#screen-sandbox .status-card:nth-child(1) .desc');
+        const provisionLabelEl = document.querySelector('#screen-sandbox .status-card:nth-child(2) .status-card-label');
+        const provisionDescEl = document.querySelector('#screen-sandbox .status-card:nth-child(2) .desc');
+        const setupHeaderTitle = document.getElementById('setup-header-title');
+        const setupPanelDesc = document.getElementById('setup-panel-desc');
+        const btnWslSetup = document.getElementById('btn-wsl-setup');
+
+        if (isWindows) {
+            statusLabelEl.textContent = 'Sandboxing Status';
+            statusDescEl.textContent = 'Is WSL filesystem containment currently active?';
+            provisionLabelEl.textContent = 'WSL Provision';
+            provisionDescEl.textContent = 'Has the isolated WSL instance been provisioned?';
+            setupHeaderTitle.textContent = 'WSL Setup Utilities';
+            setupPanelDesc.textContent = 'If WSL is not yet provisioned, trigger the automatic downloader and setup script here.';
+            if (!btnWslSetup.disabled) {
+                btnWslSetup.textContent = 'Install & Provision WSL Sandbox';
+            }
+        } else {
+            statusLabelEl.textContent = 'Sandboxing Status';
+            statusDescEl.textContent = 'Is gVisor filesystem containment currently active?';
+            provisionLabelEl.textContent = 'gVisor Setup';
+            provisionDescEl.textContent = 'Has the local gVisor (runsc) binary been configured?';
+            setupHeaderTitle.textContent = 'gVisor Setup Utilities';
+            setupPanelDesc.textContent = 'If gVisor (runsc) is not yet configured, trigger the automatic downloader and setup script here.';
+            if (!btnWslSetup.disabled) {
+                btnWslSetup.textContent = 'Install & Configure gVisor Sandbox';
+            }
+        }
 
         const statusEl = document.getElementById('sb-status-text');
         statusEl.textContent = data.sandboxing_enabled ? 'Active' : 'Disabled';
         statusEl.className   = 'status-value ' + (data.sandboxing_enabled ? 'online' : 'offline');
 
         const wslEl = document.getElementById('sb-wsl-text');
-        wslEl.textContent = data.wsl_installed ? 'Provisioned' : 'Not Installed';
-        wslEl.className   = 'status-value ' + (data.wsl_installed ? 'online' : 'offline');
+        wslEl.textContent = data.setup_done ? 'Provisioned' : 'Not Installed';
+        wslEl.className   = 'status-value ' + (data.setup_done ? 'online' : 'offline');
 
         document.getElementById('sb-cache-text').textContent = data.cache_dir || 'N/A';
+
+        // Toggle Reset/Test Actions row based on setup_done
+        const actionsRow = document.getElementById('sandbox-util-actions');
+        if (data.setup_done) {
+            actionsRow.style.display = 'flex';
+        } else {
+            actionsRow.style.display = 'none';
+        }
+
+        updateContainmentBadge(data);
     } catch (err) {
         console.error('Failed to load sandbox status', err);
     }
@@ -432,13 +539,56 @@ btnWslSetup.addEventListener('click', async () => {
     try {
         const response = await fetch('/api/sandbox/setup', { method: 'POST' });
         const data     = await response.json();
-        showToast(data.message || 'WSL setup triggered in background.', 'success');
+        showToast(data.message || 'Sandbox setup triggered in background.', 'success');
+        startSetupPolling();
     } catch (err) {
-        showToast('Failed to initiate WSL setup.', 'error');
+        showToast('Failed to initiate sandbox setup.', 'error');
+        btnWslSetup.disabled = false;
+        loadSandbox();
+    }
+});
+
+const btnSandboxTest = document.getElementById('btn-sandbox-test');
+btnSandboxTest.addEventListener('click', async () => {
+    btnSandboxTest.disabled = true;
+    btnSandboxTest.textContent = 'Testing Containment…';
+    try {
+        const response = await fetch('/api/sandbox/test', { method: 'POST' });
+        const data = await response.json();
+        if (data.status === 'success') {
+            showToast(`Test Succeeded!\nOutput: ${data.output}`, 'success');
+        } else {
+            showToast(data.message || 'Test failed.', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to execute sandbox containment test.', 'error');
     } finally {
-        setTimeout(loadSandbox, 5000);
-        btnWslSetup.disabled    = false;
-        btnWslSetup.textContent = 'Install & Provision WSL Sandbox';
+        btnSandboxTest.disabled = false;
+        btnSandboxTest.textContent = 'Test Containment';
+    }
+});
+
+const btnSandboxReset = document.getElementById('btn-sandbox-reset');
+btnSandboxReset.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to completely wipe and reset the sandbox workspace? All modifications inside the sandbox will be lost.')) {
+        return;
+    }
+    btnSandboxReset.disabled = true;
+    btnSandboxReset.textContent = 'Resetting Workspace…';
+    try {
+        const response = await fetch('/api/sandbox/reset', { method: 'POST' });
+        const data = await response.json();
+        if (data.status === 'success') {
+            showToast('Sandbox workspace reset successfully.', 'success');
+        } else {
+            showToast(data.message || 'Reset failed.', 'error');
+        }
+    } catch (err) {
+        showToast('Failed to reset sandbox workspace.', 'error');
+    } finally {
+        btnSandboxReset.disabled = false;
+        btnSandboxReset.textContent = 'Reset Workspace';
+        loadSandbox();
     }
 });
 

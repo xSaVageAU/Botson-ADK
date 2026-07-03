@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"runtime"
 	"strings"
 
 	"botson/internal/config"
@@ -117,5 +118,10 @@ func printUsage() {
 	fmt.Println("  botson config get <key> - Print configuration value")
 	fmt.Println("  botson config set <key> <val> - Set configuration value")
 	fmt.Println("  botson pairing approve <gateway> <code> - Approve a pending pairing request")
-	fmt.Println("  botson wslsetup         - Automatically install and provision isolated WSL sandbox")
+	if runtime.GOOS == "windows" {
+		fmt.Println("  botson setup            - Automatically install and provision isolated WSL sandbox")
+	} else {
+		fmt.Println("  botson setup            - Automatically install and configure gVisor (runsc) sandbox")
+	}
+	fmt.Println("  botson setup test       - Run an end-to-end sandbox containment test")
 }

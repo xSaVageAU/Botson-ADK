@@ -28,9 +28,15 @@
                         <span class="app-logo-sub">v2.0 Dashboard</span>
                     </div>
                 </div>
-                <div class="status-pill" id="home-status-pill" title="Connection status">
-                    <span class="status-pill-dot"></span>
-                    <span id="home-status-label">Live</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <div class="status-pill" id="containment-badge" title="Containment environment" style="background: rgba(251,191,36,0.08); border-color: rgba(251,191,36,0.20); color: var(--warning); display: none;">
+                        <span class="status-pill-dot" style="background: var(--warning); animation: none; box-shadow: none;"></span>
+                        <span id="containment-label">Sandbox</span>
+                    </div>
+                    <div class="status-pill" id="home-status-pill" title="Connection status">
+                        <span class="status-pill-dot"></span>
+                        <span id="home-status-label">Live</span>
+                    </div>
                 </div>
             </div>
             <div class="home-greeting">
@@ -273,10 +279,21 @@
                 <div class="action-panel">
                     <div class="action-panel-header">
                         <span aria-hidden="true">🛠️</span>
-                        <h4>Setup Utilities</h4>
+                        <h4 id="setup-header-title">Setup Utilities</h4>
                     </div>
-                    <p class="desc">If WSL is not yet provisioned, trigger the automatic downloader and setup script here.</p>
+                    <p class="desc" id="setup-panel-desc">If WSL is not yet provisioned, trigger the automatic downloader and setup script here.</p>
                     <button id="btn-wsl-setup" class="action-btn">Install &amp; Provision WSL Sandbox</button>
+
+                    <!-- Real-time Setup Logs Console -->
+                    <div id="setup-logs-container" style="display: none; margin-top: 1rem; background: #05070a; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 0.75rem; font-family: var(--font-mono); font-size: 0.72rem; height: 180px; overflow-y: auto; text-align: left; color: var(--text-primary); width: 100%;">
+                        <div id="setup-logs" style="white-space: pre-wrap; line-height: 1.4;"></div>
+                    </div>
+
+                    <!-- Sandbox Utilities (Reset/Test) -->
+                    <div id="sandbox-util-actions" style="display: none; gap: 8px; margin-top: 1rem; flex-wrap: wrap; width: 100%;">
+                        <button id="btn-sandbox-test" class="action-btn" style="flex: 1; background: rgba(124,109,250,0.08); border-color: rgba(124,109,250,0.20); color: var(--accent-bright);">Test Containment</button>
+                        <button id="btn-sandbox-reset" class="action-btn" style="flex: 1; background: rgba(248,113,113,0.05); border-color: rgba(248,113,113,0.15); color: var(--error);">Reset Workspace</button>
+                    </div>
                 </div>
 
             </div>

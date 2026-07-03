@@ -15,6 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"runtime"
+	"sync"
+
 	"github.com/glebarez/sqlite"
 	"google.golang.org/adk/v2/agent"
 	adkplugin "google.golang.org/adk/v2/plugin"
@@ -45,6 +48,12 @@ var (
 	configMgr     *config.Manager
 	dataDirectory string
 	sessService   session.Service
+	execMgr       *executor.Manager
+
+	setupStateMu sync.Mutex
+	setupRunning bool
+	setupSuccess bool
+	setupError   string
 )
 
 type ChatRequest struct {
@@ -136,7 +145,7 @@ func main() {
 	}
 
 	// Initialize Executor Manager
-	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
+	execMgr = executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
 	defer execMgr.Close()
 
 	currentEnvType = func() string {
@@ -201,6 +210,9 @@ func main() {
 	})
 	http.HandleFunc("/api/sandbox", handleGetSandbox)
 	http.HandleFunc("/api/sandbox/setup", handleSetupSandbox)
+	http.HandleFunc("/api/sandbox/setup/status", handleGetSetupStatus)
+	http.HandleFunc("/api/sandbox/reset", handleResetSandbox)
+	http.HandleFunc("/api/sandbox/test", handleTestSandbox)
 	http.HandleFunc("/api/pairings", handleGetPairings)
 	http.HandleFunc("/api/pairings/approve", handleApprovePairings)
 	http.HandleFunc("/api/sessions", handleListSessions)
@@ -416,16 +428,15 @@ func handleGetSandbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := configMgr.Get()
-
-	// Simple check if WSL is setup (look for a folder like cache/wsl_home or check environment)
-	wslSetupPath := filepath.Join(dataDirectory, "cache", "wsl_home")
-	_, err := os.Stat(wslSetupPath)
-	wslSetupDone := (err == nil)
+	setupDone := executor.IsSandboxSetup(dataDirectory)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"sandboxing_enabled": cfg.Features.Sandboxing,
-		"wsl_installed":      wslSetupDone,
+		"wsl_installed":      setupDone, // backward compatibility
+		"setup_done":         setupDone,
+		"os":                 runtime.GOOS,
+		"active_target":      execMgr.GetActiveType(),
 		"cache_dir":          filepath.Join(dataDirectory, "cache"),
 	})
 }
@@ -436,18 +447,108 @@ func handleSetupSandbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Spin up setup in a non-blocking background goroutine
+	setupStateMu.Lock()
+	if setupRunning {
+		setupStateMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "message": "Sandbox setup is already running."})
+		return
+	}
+	setupRunning = true
+	setupSuccess = false
+	setupError = ""
+	setupStateMu.Unlock()
+
+	executor.GlobalSetupLogger.Clear()
+	executor.GlobalSetupLogger.Log("Initializing sandbox setup on %s...", runtime.GOOS)
+
 	go func() {
-		log.Println("Starting background WSL sandbox setup from Web UI...")
-		if err := executor.SetupWSL(dataDirectory); err != nil {
-			log.Printf("WSL setup failed: %v\n", err)
+		err := executor.SetupSandbox(dataDirectory)
+		setupStateMu.Lock()
+		setupRunning = false
+		if err != nil {
+			setupSuccess = false
+			setupError = err.Error()
+			executor.GlobalSetupLogger.Log("❌ Setup failed: %v", err)
 		} else {
-			log.Println("WSL setup finished successfully.")
+			setupSuccess = true
+			executor.GlobalSetupLogger.Log("✅ Setup completed successfully!")
 		}
+		setupStateMu.Unlock()
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "message": "WSL sandbox setup has been started in the background."})
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "message": "Sandbox setup has been started in the background."})
+}
+
+func handleGetSetupStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	setupStateMu.Lock()
+	defer setupStateMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"running": setupRunning,
+		"success": setupSuccess,
+		"error":   setupError,
+		"logs":    executor.GlobalSetupLogger.GetLogs(),
+	})
+}
+
+func handleResetSandbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sb, err := execMgr.GetSandboxTarget()
+	if err != nil || sb == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": fmt.Sprintf("Failed to retrieve sandbox: %v", err)})
+		return
+	}
+
+	if err := sb.ResetWorkspace(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": fmt.Sprintf("Failed to reset sandbox workspace: %v", err)})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "message": "Sandbox workspace reset successfully."})
+}
+
+func handleTestSandbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sb, err := execMgr.GetSandboxTarget()
+	if err != nil || sb == nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": fmt.Sprintf("Failed to initialize sandbox target: %v", err)})
+		return
+	}
+
+	stdout, stderr, exitCode, err := sb.Exec("uname -a")
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error", "message": fmt.Sprintf("Containment test execution failed: %v", err), "stderr": stderr})
+		return
+	}
+
+	output := stdout
+	if output == "" {
+		output = stderr
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "output": strings.TrimSpace(output), "exit_code": exitCode})
 }
 
 func handleGetPairings(w http.ResponseWriter, r *http.Request) {
