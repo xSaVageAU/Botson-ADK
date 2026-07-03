@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,9 @@ import (
 	"sync"
 	"time"
 )
+
+//go:embed PROMPT.md
+var defaultPromptContent string
 
 type FeaturesConfig struct {
 	Sandboxing bool `json:"sandboxing"`
@@ -75,13 +79,32 @@ func (m *Manager) Load() error {
 		return err
 	}
 
+	// Resolve the base .botson-adk directory (parent of dataDir)
+	baseDir := filepath.Dir(m.dataDir)
+	promptPath := filepath.Join(baseDir, "PROMPT.md")
+
+	// Ensure default PROMPT.md exists in the base .botson-adk directory
+	if _, err := os.Stat(promptPath); os.IsNotExist(err) {
+		// Write the embedded default prompt
+		if err := os.WriteFile(promptPath, []byte(defaultPromptContent), 0644); err != nil {
+			return fmt.Errorf("failed to write default PROMPT.md: %w", err)
+		}
+	}
+
+	// Load prompt content
+	promptBytes, err := os.ReadFile(promptPath)
+	if err != nil {
+		return fmt.Errorf("failed to read PROMPT.md: %w", err)
+	}
+	promptContent := string(promptBytes)
+
 	data, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Write default core config map
 			m.data = map[string]any{
 				"provider":      "openrouter",
-				"instruction":   "You are Botson, a helpful AI assistant.",
+				"instruction":   promptContent,
 				"discord_token": "YOUR_DISCORD_TOKEN",
 				"features": map[string]any{
 					"sandboxing": false,
@@ -125,6 +148,9 @@ func (m *Manager) Load() error {
 		return err
 	}
 	m.data = parsed
+
+	// Always sync "instruction" in m.data from PROMPT.md so it reflects changes in the markdown file
+	m.data["instruction"] = promptContent
 	return nil
 }
 
@@ -152,6 +178,13 @@ func (m *Manager) Get() *Config {
 func (m *Manager) Save(cfg *Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Update PROMPT.md with the updated instruction
+	baseDir := filepath.Dir(m.dataDir)
+	promptPath := filepath.Join(baseDir, "PROMPT.md")
+	if err := os.WriteFile(promptPath, []byte(cfg.Instruction), 0644); err != nil {
+		return fmt.Errorf("failed to save PROMPT.md: %w", err)
+	}
 
 	// Convert Config to JSON, then back to the map
 	bytes, err := json.Marshal(cfg)
