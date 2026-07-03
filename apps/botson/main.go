@@ -115,8 +115,15 @@ func main() {
 		return ""
 	}
 
-	// 4. Initialize model provider
-	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
+	var envTypeGetter func() string
+	var currentEnvType func() string = func() string {
+		return "host"
+	}
+	envTypeGetter = func() string {
+		return currentEnvType()
+	}
+
+	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter, envTypeGetter)
 	if err != nil {
 		log.Fatalf("Failed to initialize LLM provider: %v. Please configure a valid API key using 'botson config set api_key <value>'.", err)
 	}
@@ -139,6 +146,10 @@ func main() {
 	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
 	defer execMgr.Close()
 
+	currentEnvType = func() string {
+		return execMgr.GetActiveType()
+	}
+
 	execTools, err := tools.MakeAllTools(execMgr, cfg.Features)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
@@ -148,7 +159,7 @@ func main() {
 	toolsList = append(toolsList, execTools...)
 
 	// 6. Create the agent
-	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction)
+	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction, envTypeGetter())
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, resolvedInstruction, toolsList)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)

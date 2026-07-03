@@ -10,15 +10,15 @@ import (
 )
 
 // GetModel retrieves an implementation of model.LLM.
-func GetModel(ctx context.Context, provider string, modelNameGetter func() string, apiKeyGetter func() string) (model.LLM, error) {
+func GetModel(ctx context.Context, provider string, modelNameGetter func() string, apiKeyGetter func() string, envTypeGetter func() string) (model.LLM, error) {
 	var inner model.LLM
 	var err error
 
 	switch provider {
 	case "openrouter":
-		inner, err = openrouter.NewModel(ctx, modelNameGetter, apiKeyGetter)
+		inner, err = openrouter.NewModel(ctx, modelNameGetter, apiKeyGetter, envTypeGetter)
 	case "gemini":
-		inner, err = gemini.NewModel(ctx, modelNameGetter, apiKeyGetter)
+		inner, err = gemini.NewModel(ctx, modelNameGetter, apiKeyGetter, envTypeGetter)
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %s", provider)
 	}

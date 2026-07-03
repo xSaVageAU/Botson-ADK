@@ -9,6 +9,7 @@ import (
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/adk/v2/model/gemini"
 	"google.golang.org/genai"
+	"botson/internal/prompt"
 )
 
 type GeminiModelWrapper struct {
@@ -16,17 +17,19 @@ type GeminiModelWrapper struct {
 	ctx             context.Context
 	modelNameGetter func() string
 	apiKeyGetter    func() string
+	envTypeGetter   func() string
 	cachedModel     model.LLM
 	cachedModelName string
 	cachedAPIKey    string
 }
 
 // NewModel creates a new Gemini implementation wrapper supporting dynamic configuration hot-reloading.
-func NewModel(ctx context.Context, modelNameGetter func() string, apiKeyGetter func() string) (model.LLM, error) {
+func NewModel(ctx context.Context, modelNameGetter func() string, apiKeyGetter func() string, envTypeGetter func() string) (model.LLM, error) {
 	return &GeminiModelWrapper{
 		ctx:             ctx,
 		modelNameGetter: modelNameGetter,
 		apiKeyGetter:    apiKeyGetter,
+		envTypeGetter:   envTypeGetter,
 	}, nil
 }
 
@@ -76,5 +79,15 @@ func (m *GeminiModelWrapper) GenerateContent(ctx context.Context, req *model.LLM
 			yield(nil, err)
 		}
 	}
+
+	// Intercept and resolve placeholders in the system instruction
+	if req.Config != nil && req.Config.SystemInstruction != nil {
+		for _, part := range req.Config.SystemInstruction.Parts {
+			if part.Text != "" {
+				part.Text = prompt.ResolvePlaceholders(part.Text, m.envTypeGetter())
+			}
+		}
+	}
+
 	return inner.GenerateContent(ctx, req, stream)
 }

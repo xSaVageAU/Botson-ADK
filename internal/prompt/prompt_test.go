@@ -9,9 +9,9 @@ import (
 	"botson/internal/prompt"
 )
 
-func TestResolvePlaceholders(t *testing.T) {
+func TestResolvePlaceholdersHost(t *testing.T) {
 	input := "Hello, I am running on {{OS}} with {{ARCH}}. Hostname is {{HOSTNAME}}. Home is {{HOME_DIR}} and workspace is {{WORKSPACE_DIR}}."
-	resolved := prompt.ResolvePlaceholders(input)
+	resolved := prompt.ResolvePlaceholders(input, "host")
 
 	hostname, _ := os.Hostname()
 	homeDir, _ := os.UserHomeDir()
@@ -35,8 +35,26 @@ func TestResolvePlaceholders(t *testing.T) {
 
 	// Test SYSTEM_CONTEXT placeholder
 	inputContext := "Context:\n{{SYSTEM_CONTEXT}}"
-	resolvedContext := prompt.ResolvePlaceholders(inputContext)
+	resolvedContext := prompt.ResolvePlaceholders(inputContext, "host")
 	if !strings.Contains(resolvedContext, "Operating System:") {
 		t.Errorf("Expected resolved string to contain SYSTEM_CONTEXT details, got: %q", resolvedContext)
+	}
+}
+
+func TestResolvePlaceholdersSandbox(t *testing.T) {
+	input := "Hello, I am running on {{OS}} with {{ARCH}}. Hostname is {{HOSTNAME}}. Home is {{HOME_DIR}} and workspace is {{WORKSPACE_DIR}} under {{ENV_TYPE}}."
+	resolved := prompt.ResolvePlaceholders(input, "sandbox")
+
+	if !strings.Contains(resolved, "linux") {
+		t.Errorf("Expected sandbox OS to be 'linux', got: %q", resolved)
+	}
+	if !strings.Contains(resolved, "gvisor-sandbox") {
+		t.Errorf("Expected sandbox hostname to be 'gvisor-sandbox', got: %q", resolved)
+	}
+	if !strings.Contains(resolved, "/root") {
+		t.Errorf("Expected sandbox home to be '/root', got: %q", resolved)
+	}
+	if !strings.Contains(resolved, "under sandbox") {
+		t.Errorf("Expected sandbox env type, got: %q", resolved)
 	}
 }

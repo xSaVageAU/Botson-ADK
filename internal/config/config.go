@@ -13,7 +13,6 @@ import (
 
 type FeaturesConfig struct {
 	Sandboxing bool `json:"sandboxing"`
-	Services   bool `json:"services"`
 	Coder      bool `json:"coder"`
 }
 
@@ -86,7 +85,6 @@ func (m *Manager) Load() error {
 				"discord_token": "YOUR_DISCORD_TOKEN",
 				"features": map[string]any{
 					"sandboxing": true,
-					"services":   true,
 					"coder":      true,
 				},
 			}
@@ -143,14 +141,9 @@ func (m *Manager) Get() *Config {
 
 	var cfg Config
 	cfg.Features.Sandboxing = true
-	cfg.Features.Services = true
 	cfg.Features.Coder = true
 
 	_ = json.Unmarshal(bytes, &cfg)
-
-	if !cfg.Features.Sandboxing {
-		cfg.Features.Services = false
-	}
 
 	return &cfg
 }

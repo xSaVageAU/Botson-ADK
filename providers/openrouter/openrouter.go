@@ -14,18 +14,21 @@ import (
 
 	"google.golang.org/adk/v2/model"
 	"google.golang.org/genai"
+	"botson/internal/prompt"
 )
 
 type OpenRouterModel struct {
 	modelNameGetter func() string
 	apiKeyGetter    func() string
+	envTypeGetter   func() string
 }
 
 // NewModel creates a new OpenRouter implementation of model.LLM using dynamic configuration getters.
-func NewModel(ctx context.Context, modelNameGetter func() string, apiKeyGetter func() string) (model.LLM, error) {
+func NewModel(ctx context.Context, modelNameGetter func() string, apiKeyGetter func() string, envTypeGetter func() string) (model.LLM, error) {
 	return &OpenRouterModel{
 		modelNameGetter: modelNameGetter,
 		apiKeyGetter:    apiKeyGetter,
+		envTypeGetter:   envTypeGetter,
 	}, nil
 }
 
@@ -150,9 +153,10 @@ func (m *OpenRouterModel) GenerateContent(ctx context.Context, req *model.LLMReq
 				}
 			}
 			if sysText.Len() > 0 {
+				resolved := prompt.ResolvePlaceholders(sysText.String(), m.envTypeGetter())
 				messages = append(messages, openRouterMessage{
 					Role:    "system",
-					Content: sysText.String(),
+					Content: resolved,
 				})
 			}
 		}

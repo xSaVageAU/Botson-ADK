@@ -345,7 +345,6 @@ async function loadConfig() {
         document.getElementById('cfg-discord-token').value = data.discord_token_masked || '';
 
         document.getElementById('cfg-sandboxing').checked  = data.sandboxing || false;
-        document.getElementById('cfg-services').checked    = data.services   || false;
         document.getElementById('cfg-coder').checked       = data.coder      || false;
 
         document.getElementById('cfg-or-model').value      = data.openrouter_model    || '';
@@ -367,7 +366,6 @@ document.getElementById('config-form').addEventListener('submit', async (e) => {
         instruction:      document.getElementById('cfg-instruction').value,
         discord_token:    document.getElementById('cfg-discord-token').value,
         sandboxing:       document.getElementById('cfg-sandboxing').checked,
-        services:         document.getElementById('cfg-services').checked,
         coder:            document.getElementById('cfg-coder').checked,
         openrouter_model: document.getElementById('cfg-or-model').value,
         openrouter_key:   document.getElementById('cfg-or-key').value,

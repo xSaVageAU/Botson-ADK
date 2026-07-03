@@ -76,6 +76,7 @@ func main() {
 
 	configMgr = mgr
 	dataDirectory = dataDir
+	mgr.StartWatcher()
 
 	// Set data directory for authorization and pairings
 	auth.SetDataDir(dataDir)
@@ -107,7 +108,15 @@ func main() {
 		return ""
 	}
 
-	m, err := providers.GetModel(ctx, "openrouter", modelGetter, apiKeyGetter)
+	var envTypeGetter func() string
+	var currentEnvType func() string = func() string {
+		return "host"
+	}
+	envTypeGetter = func() string {
+		return currentEnvType()
+	}
+
+	m, err := providers.GetModel(ctx, "openrouter", modelGetter, apiKeyGetter, envTypeGetter)
 	if err != nil {
 		log.Fatalf("Failed to initialize OpenRouter LLM provider: %v", err)
 	}
@@ -130,6 +139,17 @@ func main() {
 	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
 	defer execMgr.Close()
 
+	currentEnvType = func() string {
+		return execMgr.GetActiveType()
+	}
+
+	mgr.OnReload(func(newCfg *config.Config) {
+		log.Println("Reloading sandbox settings from configuration...")
+		if err := execMgr.SetSandboxing(newCfg.Features.Sandboxing); err != nil {
+			log.Printf("Error dynamically updating sandbox settings: %v\n", err)
+		}
+	})
+
 	execTools, err := tools.MakeAllTools(execMgr, cfg.Features)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
@@ -138,7 +158,7 @@ func main() {
 	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 	toolsList = append(toolsList, execTools...)
 
-	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction)
+	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction, envTypeGetter())
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, resolvedInstruction, toolsList)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
@@ -204,6 +224,7 @@ func main() {
 
 	log.Println("Shutting down Botson Web UI...")
 	_ = server.Shutdown(context.Background())
+	mgr.StopWatcher()
 	auth.CloseDB()
 	log.Println("Web server stopped successfully.")
 }
@@ -296,7 +317,6 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		"instruction":          cfg.Instruction,
 		"discord_token_masked": maskVal(cfg.DiscordToken),
 		"sandboxing":           cfg.Features.Sandboxing,
-		"services":             cfg.Features.Services,
 		"coder":                cfg.Features.Coder,
 		"openrouter_model":     orModel,
 		"openrouter_key_mask":  orKey,
@@ -310,7 +330,6 @@ type SetConfigReq struct {
 	Instruction     string `json:"instruction"`
 	DiscordToken    string `json:"discord_token"`
 	Sandboxing      *bool  `json:"sandboxing"`
-	Services        *bool  `json:"services"`
 	Coder           *bool  `json:"coder"`
 	OpenRouterModel string `json:"openrouter_model"`
 	OpenRouterKey   string `json:"openrouter_key"`
@@ -347,16 +366,8 @@ func handleSetConfig(w http.ResponseWriter, r *http.Request) {
 	if req.Sandboxing != nil {
 		cfg.Features.Sandboxing = *req.Sandboxing
 	}
-	if req.Services != nil {
-		cfg.Features.Services = *req.Services
-	}
 	if req.Coder != nil {
 		cfg.Features.Coder = *req.Coder
-	}
-
-	// Handle cascading dependency rule
-	if !cfg.Features.Sandboxing {
-		cfg.Features.Services = false
 	}
 
 	if err := configMgr.Save(cfg); err != nil {

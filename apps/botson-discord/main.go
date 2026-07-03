@@ -106,7 +106,15 @@ func main() {
 		return ""
 	}
 
-	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter)
+	var envTypeGetter func() string
+	var currentEnvType func() string = func() string {
+		return "host"
+	}
+	envTypeGetter = func() string {
+		return currentEnvType()
+	}
+
+	m, err := providers.GetModel(ctx, cfg.Provider, modelGetter, apiKeyGetter, envTypeGetter)
 	if err != nil {
 		log.Fatalf("Failed to initialize LLM provider: %v", err)
 	}
@@ -129,6 +137,10 @@ func main() {
 	execMgr := executor.NewManager(filepath.Join(dataDir, "cache"), "", cfg.Features.Sandboxing)
 	defer execMgr.Close()
 
+	currentEnvType = func() string {
+		return execMgr.GetActiveType()
+	}
+
 	execTools, err := tools.MakeAllTools(execMgr, cfg.Features)
 	if err != nil {
 		log.Fatalf("Failed to create executor tools: %v", err)
@@ -137,7 +149,7 @@ func main() {
 	toolsList := []tool.Tool{readTool, writeTool, timeTool}
 	toolsList = append(toolsList, execTools...)
 
-	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction)
+	resolvedInstruction := prompt.ResolvePlaceholders(cfg.Instruction, envTypeGetter())
 	ag, err := botsonAgent.CreateAgent(ctx, "botson", m, resolvedInstruction, toolsList)
 	if err != nil {
 		log.Fatalf("Failed to create agent: %v", err)
@@ -164,6 +176,9 @@ func main() {
 	// Register config change listener to update settings on the fly
 	mgr.OnReload(func(newCfg *config.Config) {
 		log.Println("Reloading client settings from configuration...")
+		if err := execMgr.SetSandboxing(newCfg.Features.Sandboxing); err != nil {
+			log.Printf("Error dynamically updating sandbox settings: %v\n", err)
+		}
 	})
 
 	stop := make(chan os.Signal, 1)

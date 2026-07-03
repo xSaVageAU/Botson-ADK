@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 )
 
 type Target struct {
@@ -39,43 +41,52 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Starting cross-compilation for Botson Multi-Binary Suite...")
+	fmt.Println("Starting concurrent cross-compilation for Botson Multi-Binary Suite...")
 
+	var wg sync.WaitGroup
 	for _, app := range apps {
-		appBuildDir := filepath.Join(buildDir, app.Name)
-		if err := os.MkdirAll(appBuildDir, 0755); err != nil {
-			fmt.Printf("Failed to create app build directory for %s: %v\n", app.Name, err)
-			continue
-		}
+		wg.Add(1)
+		go func(app App) {
+			defer wg.Done()
 
-		fmt.Printf("\n--- Building App: %s ---\n", app.Name)
-
-		for _, t := range targets {
-			ext := ""
-			if t.OS == "windows" {
-				ext = ".exe"
+			appBuildDir := filepath.Join(buildDir, app.Name)
+			if err := os.MkdirAll(appBuildDir, 0755); err != nil {
+				fmt.Printf("Failed to create app build directory for %s: %v\n", app.Name, err)
+				return
 			}
 
-			outputName := fmt.Sprintf("%s-%s-%s%s", app.Name, t.OS, t.Arch, ext)
-			outputPath := filepath.Join(appBuildDir, outputName)
+			var logBuf strings.Builder
+			logBuf.WriteString(fmt.Sprintf("\n--- Building App: %s ---\n", app.Name))
 
-			fmt.Printf("Building %s/%s -> %s...\n", t.OS, t.Arch, outputPath)
+			for _, t := range targets {
+				ext := ""
+				if t.OS == "windows" {
+					ext = ".exe"
+				}
 
-			cmd := exec.Command("go", "build", "-o", outputPath, app.Path)
-			cmd.Env = append(os.Environ(),
-				"GOOS="+t.OS,
-				"GOARCH="+t.Arch,
-				"CGO_ENABLED=0", // Explicitly ensure CGO is disabled for clean pure-Go static binaries
-			)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
+				outputName := fmt.Sprintf("%s-%s-%s%s", app.Name, t.OS, t.Arch, ext)
+				outputPath := filepath.Join(appBuildDir, outputName)
 
-			if err := cmd.Run(); err != nil {
-				fmt.Printf("Error building %s for %s/%s: %v\n", app.Name, t.OS, t.Arch, err)
-				continue
+				logBuf.WriteString(fmt.Sprintf("Building %s/%s -> %s...\n", t.OS, t.Arch, outputPath))
+
+				cmd := exec.Command("go", "build", "-o", outputPath, app.Path)
+				cmd.Env = append(os.Environ(),
+					"GOOS="+t.OS,
+					"GOARCH="+t.Arch,
+					"CGO_ENABLED=0",
+				)
+
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					logBuf.WriteString(fmt.Sprintf("Error building %s for %s/%s: %v\nOutput: %s\n", app.Name, t.OS, t.Arch, err, string(output)))
+					continue
+				}
 			}
-		}
+
+			fmt.Print(logBuf.String())
+		}(app)
 	}
 
+	wg.Wait()
 	fmt.Println("\nBuild process completed! Binaries are organized in the './build/' subfolders.")
 }

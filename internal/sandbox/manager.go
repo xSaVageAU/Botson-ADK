@@ -2,8 +2,6 @@ package sandbox
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,7 +47,6 @@ type Sandbox struct {
 	RootfsMgr      *RootfsManager
 	Cmd            *exec.Cmd // Store the running daemon background process
 	NetMode        NetworkMode
-	TemplateName   string
 	Persist        bool
 	AutoStart      bool
 	Services       []Service
@@ -57,78 +54,8 @@ type Sandbox struct {
 	servicesMu     sync.Mutex
 }
 
-// NewSandbox initializes a new sandboxed environment with a unique ID and bootstrapped rootfs
-func NewSandbox(rootfsMgr *RootfsManager, templateName string) (*Sandbox, error) {
-	// Generate unique 8-character hex ID
-	bytes := make([]byte, 4)
-	if _, err := rand.Read(bytes); err != nil {
-		return nil, fmt.Errorf("failed to generate random ID: %w", err)
-	}
-	id := "gvis-term-" + hex.EncodeToString(bytes)
-
-	// Setup temporary paths in /tmp (standard writable Linux directory)
-	tempBase := os.TempDir()
-	bundlePath := filepath.Join(tempBase, id)
-	rootfsPath := filepath.Join(bundlePath, "rootfs")
-	statePath := filepath.Join(tempBase, id+"-state")
-
-	s := &Sandbox{
-		ID:           id,
-		BundlePath:   bundlePath,
-		RootfsPath:   rootfsPath,
-		StatePath:    statePath,
-		RootfsMgr:    rootfsMgr,
-		TemplateName: templateName,
-	}
-
-	// 1. Create directories
-	if err := os.MkdirAll(rootfsPath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create sandbox directories: %w", err)
-	}
-	if err := os.MkdirAll(statePath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create state directory: %w", err)
-	}
-
-	// 2. Bootstrap rootfs into bundle
-	if templateName != "" {
-		if err := rootfsMgr.CopyCustomTemplateTo(templateName, rootfsPath); err != nil {
-			s.Cleanup()
-			return nil, fmt.Errorf("failed to copy custom template: %w", err)
-		}
-	} else {
-		if err := rootfsMgr.CopyTemplateTo(rootfsPath); err != nil {
-			s.Cleanup()
-			return nil, fmt.Errorf("failed to copy template rootfs: %w", err)
-		}
-	}
-
-	// 2.5 Setup DNS resolution (/etc/resolv.conf) inside rootfs
-	resolvConfPath := filepath.Join(rootfsPath, "etc", "resolv.conf")
-	if hostResolv, err := os.ReadFile("/etc/resolv.conf"); err == nil && len(hostResolv) > 0 {
-		_ = os.WriteFile(resolvConfPath, hostResolv, 0644)
-	} else {
-		// Fallback to public DNS if host's resolv.conf is unreadable or empty
-		defaultDNS := []byte("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
-		_ = os.WriteFile(resolvConfPath, defaultDNS, 0644)
-	}
-
-	// 3. Beautify rootfs shell configuration (profile, aliases, color support)
-	profileDir := filepath.Join(rootfsPath, "etc", "profile.d")
-	if err := os.MkdirAll(profileDir, 0755); err == nil {
-		colorScript := `alias ls='ls --color=auto'
-alias ll='ls -la --color=auto'
-alias grep='grep --color=auto'
-alias egrep='egrep --color=auto'
-alias fgrep='fgrep --color=auto'
-`
-		_ = os.WriteFile(filepath.Join(profileDir, "color.sh"), []byte(colorScript), 0644)
-	}
-
-	return s, nil
-}
-
 // NewSessionSandbox initializes a persistent named sandbox session
-func NewSessionSandbox(rootfsMgr *RootfsManager, sessionID string, templateName string, persist bool) (*Sandbox, error) {
+func NewSessionSandbox(rootfsMgr *RootfsManager, sessionID string, persist bool) (*Sandbox, error) {
 	// Setup temporary paths for OCI bundle and state in /tmp
 	tempBase := os.TempDir()
 	bundlePath := filepath.Join(tempBase, sessionID)
@@ -139,7 +66,7 @@ func NewSessionSandbox(rootfsMgr *RootfsManager, sessionID string, templateName 
 	if err != nil {
 		return nil, fmt.Errorf("failed to locate home directory: %w", err)
 	}
-	rootfsPath := filepath.Join(home, ".botson-agent", "sessions", sessionID, "workspace")
+	rootfsPath := filepath.Join(home, ".botson-adk", "sessions", sessionID, "workspace")
 
 	s := &Sandbox{
 		ID:             sessionID,
@@ -147,7 +74,6 @@ func NewSessionSandbox(rootfsMgr *RootfsManager, sessionID string, templateName 
 		RootfsPath:     rootfsPath,
 		StatePath:      statePath,
 		RootfsMgr:      rootfsMgr,
-		TemplateName:   templateName,
 		Persist:        persist,
 		activeServices: make(map[string]*exec.Cmd),
 	}
@@ -169,16 +95,9 @@ func NewSessionSandbox(rootfsMgr *RootfsManager, sessionID string, templateName 
 
 	// 2. Bootstrap rootfs if it is empty (has no /bin directory)
 	if _, err := os.Stat(filepath.Join(rootfsPath, "bin")); os.IsNotExist(err) {
-		if templateName != "" {
-			if err := rootfsMgr.CopyCustomTemplateTo(templateName, rootfsPath); err != nil {
-				s.Cleanup()
-				return nil, fmt.Errorf("failed to copy custom template: %w", err)
-			}
-		} else {
-			if err := rootfsMgr.CopyTemplateTo(rootfsPath); err != nil {
-				s.Cleanup()
-				return nil, fmt.Errorf("failed to copy template rootfs: %w", err)
-			}
+		if err := rootfsMgr.CopyTemplateTo(rootfsPath); err != nil {
+			s.Cleanup()
+			return nil, fmt.Errorf("failed to copy template rootfs: %w", err)
 		}
 
 		// 2.5 Setup DNS resolution (/etc/resolv.conf) inside rootfs
@@ -342,19 +261,13 @@ func (s *Sandbox) SaveMetadata() error {
 		return nil
 	}
 	meta := struct {
-		ID           string      `json:"id"`
-		Persist      bool        `json:"persist"`
-		TemplateName string      `json:"template_name"`
-		NetMode      NetworkMode `json:"net_mode"`
-		AutoStart    bool        `json:"auto_start"`
-		Services     []Service   `json:"services"`
+		ID      string      `json:"id"`
+		Persist bool        `json:"persist"`
+		NetMode NetworkMode `json:"net_mode"`
 	}{
-		ID:           s.ID,
-		Persist:      true,
-		TemplateName: s.TemplateName,
-		NetMode:      s.NetMode,
-		AutoStart:    s.AutoStart,
-		Services:     s.Services,
+		ID:      s.ID,
+		Persist: true,
+		NetMode: s.NetMode,
 	}
 	metaData, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
@@ -624,14 +537,8 @@ func (s *Sandbox) ResetWorkspace() error {
 	}
 
 	// 3. Re-copy the original template rootfs
-	if s.TemplateName != "" {
-		if err := s.RootfsMgr.CopyCustomTemplateTo(s.TemplateName, s.RootfsPath); err != nil {
-			return fmt.Errorf("failed to copy custom template: %w", err)
-		}
-	} else {
-		if err := s.RootfsMgr.CopyTemplateTo(s.RootfsPath); err != nil {
-			return fmt.Errorf("failed to copy standard rootfs: %w", err)
-		}
+	if err := s.RootfsMgr.CopyTemplateTo(s.RootfsPath); err != nil {
+		return fmt.Errorf("failed to copy standard rootfs: %w", err)
 	}
 
 	// 3.5 Setup DNS resolution (/etc/resolv.conf) inside rootfs
@@ -665,7 +572,7 @@ func LoadPersistentSessions(rootfsMgr *RootfsManager) ([]*Sandbox, error) {
 	if err != nil {
 		return nil, err
 	}
-	sessionsDir := filepath.Join(home, ".botson-agent", "sessions")
+	sessionsDir := filepath.Join(home, ".botson-adk", "sessions")
 	entries, err := os.ReadDir(sessionsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -691,23 +598,18 @@ func LoadPersistentSessions(rootfsMgr *RootfsManager) ([]*Sandbox, error) {
 		}
 
 		var meta struct {
-			ID           string      `json:"id"`
-			Persist      bool        `json:"persist"`
-			TemplateName string      `json:"template_name"`
-			NetMode      NetworkMode `json:"net_mode"`
-			AutoStart    bool        `json:"auto_start"`
-			Services     []Service   `json:"services"`
+			ID      string      `json:"id"`
+			Persist bool        `json:"persist"`
+			NetMode NetworkMode `json:"net_mode"`
 		}
 		if err := json.Unmarshal(data, &meta); err != nil {
 			continue
 		}
 
 		if meta.Persist {
-			sb, err := NewSessionSandbox(rootfsMgr, sessionID, meta.TemplateName, true)
+			sb, err := NewSessionSandbox(rootfsMgr, sessionID, true)
 			if err == nil {
 				sb.NetMode = meta.NetMode
-				sb.AutoStart = meta.AutoStart
-				sb.Services = meta.Services
 				loaded = append(loaded, sb)
 			}
 		}
