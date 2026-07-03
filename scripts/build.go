@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"flag"
 )
 
 type Target struct {
@@ -19,8 +20,23 @@ type App struct {
 	Path string
 }
 
+func contains(slice []string, val string) bool {
+	for _, item := range slice {
+		if strings.TrimSpace(item) == val {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
-	targets := []Target{
+	// 1. Define command line flags for filtering
+	osFilter := flag.String("os", "", "Filter targets by OS (comma-separated, e.g. windows,linux). Empty builds all.")
+	archFilter := flag.String("arch", "", "Filter targets by architecture (comma-separated, e.g. amd64,arm64). Empty builds all.")
+	appFilter := flag.String("app", "", "Filter applications to build (comma-separated, e.g. botson,botson-web). Empty builds all.")
+	flag.Parse()
+
+	allTargets := []Target{
 		{"windows", "amd64"},
 		{"windows", "arm64"},
 		{"linux", "amd64"},
@@ -29,10 +45,52 @@ func main() {
 		{"darwin", "arm64"},
 	}
 
-	apps := []App{
+	allApps := []App{
 		{"botson", "./apps/botson"},
 		{"botson-discord", "./apps/botson-discord"},
 		{"botson-web", "./apps/botson-web"},
+	}
+
+	// 2. Parse and filter targets & apps based on flags
+	var selectedOS []string
+	if *osFilter != "" {
+		selectedOS = strings.Split(*osFilter, ",")
+	}
+	var selectedArch []string
+	if *archFilter != "" {
+		selectedArch = strings.Split(*archFilter, ",")
+	}
+	var selectedApps []string
+	if *appFilter != "" {
+		selectedApps = strings.Split(*appFilter, ",")
+	}
+
+	var targets []Target
+	for _, t := range allTargets {
+		if len(selectedOS) > 0 && !contains(selectedOS, t.OS) {
+			continue
+		}
+		if len(selectedArch) > 0 && !contains(selectedArch, t.Arch) {
+			continue
+		}
+		targets = append(targets, t)
+	}
+
+	var apps []App
+	for _, app := range allApps {
+		if len(selectedApps) > 0 && !contains(selectedApps, app.Name) {
+			continue
+		}
+		apps = append(apps, app)
+	}
+
+	if len(targets) == 0 {
+		fmt.Println("No compilation targets matched the filter criteria.")
+		os.Exit(0)
+	}
+	if len(apps) == 0 {
+		fmt.Println("No applications matched the filter criteria.")
+		os.Exit(0)
 	}
 
 	buildDir := "build"
