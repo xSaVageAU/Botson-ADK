@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"iter"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"google.golang.org/adk/v2/agent"
+	"google.golang.org/adk/v2/model"
 	adkplugin "google.golang.org/adk/v2/plugin"
 	"google.golang.org/adk/v2/runner"
 	"google.golang.org/adk/v2/session"
@@ -28,6 +30,8 @@ import (
 	"google.golang.org/genai"
 
 	botsonAgent "botson/agent"
+	"botson/gateways"
+	"botson/gateways/discord"
 	"botson/internal/auth"
 	"botson/internal/config"
 	"botson/internal/executor"
@@ -43,12 +47,14 @@ import (
 var webFiles embed.FS
 
 var (
-	agentRunner   *runner.Runner
-	agentName     string
-	configMgr     *config.Manager
-	dataDirectory string
-	sessService   session.Service
-	execMgr       *executor.Manager
+	agentRunner        *runner.Runner
+	agentName          string
+	configMgr          *config.Manager
+	dataDirectory      string
+	sessService        session.Service
+	execMgr            *executor.Manager
+	gatewayMgr         *gateways.GatewayManager
+	activeDiscordToken string
 
 	setupStateMu sync.Mutex
 	setupRunning bool
@@ -101,22 +107,6 @@ func main() {
 
 	sessService = sessSvc
 
-	// Force OpenRouter provider configurations for this specific web application
-	modelGetter := func() string {
-		pCfg, _ := mgr.GetProvider("openrouter")
-		if pCfg != nil {
-			return pCfg.Model
-		}
-		return "google/gemini-3.1-flash-lite"
-	}
-	apiKeyGetter := func() string {
-		pCfg, _ := mgr.GetProvider("openrouter")
-		if pCfg != nil {
-			return pCfg.APIKey
-		}
-		return ""
-	}
-
 	var envTypeGetter func() string
 	var currentEnvType func() string = func() string {
 		return "host"
@@ -125,9 +115,9 @@ func main() {
 		return currentEnvType()
 	}
 
-	m, err := providers.GetModel(ctx, "openrouter", modelGetter, apiKeyGetter, envTypeGetter)
+	m, err := NewDynamicProviderModel(ctx, mgr, envTypeGetter)
 	if err != nil {
-		log.Fatalf("Failed to initialize OpenRouter LLM provider: %v", err)
+		log.Fatalf("Failed to initialize dynamic LLM provider: %v", err)
 	}
 
 	// Initialize config tools
@@ -151,13 +141,6 @@ func main() {
 	currentEnvType = func() string {
 		return execMgr.GetActiveType()
 	}
-
-	mgr.OnReload(func(newCfg *config.Config) {
-		log.Println("Reloading sandbox settings from configuration...")
-		if err := execMgr.SetSandboxing(newCfg.Features.Sandboxing); err != nil {
-			log.Printf("Error dynamically updating sandbox settings: %v\n", err)
-		}
-	})
 
 	execTools, err := tools.MakeAllTools(execMgr, cfg.Features)
 	if err != nil {
@@ -192,6 +175,51 @@ func main() {
 		log.Fatalf("Failed to initialize agent runner: %v", err)
 	}
 
+	// Register and start the Discord gateway if configured
+	activeDiscordToken = cfg.DiscordToken
+	if activeDiscordToken != "" && activeDiscordToken != "YOUR_DISCORD_TOKEN" {
+		log.Println("Hooking in Discord pairing gateway...")
+		gatewayMgr, err = gateways.NewGatewayManager(ag, sessSvc, runner.PluginConfig{
+			Plugins: []*adkplugin.Plugin{schedulerPlugin},
+		})
+		if err != nil {
+			log.Printf("Failed to initialize gateway manager: %v\n", err)
+		} else {
+			gatewayMgr.Register(discord.NewDiscordGateway(activeDiscordToken))
+			gatewayMgr.Start(ctx)
+		}
+	}
+
+	mgr.OnReload(func(newCfg *config.Config) {
+		log.Println("Reloading sandbox settings from configuration...")
+		if err := execMgr.SetSandboxing(newCfg.Features.Sandboxing); err != nil {
+			log.Printf("Error dynamically updating sandbox settings: %v\n", err)
+		}
+
+		// Hot-reload Discord gateway if the token changed
+		if newCfg.DiscordToken != activeDiscordToken {
+			log.Println("Discord token changed. Updating gateway...")
+			if gatewayMgr != nil {
+				gatewayMgr.Stop()
+				gatewayMgr = nil
+			}
+			activeDiscordToken = newCfg.DiscordToken
+			if activeDiscordToken != "" && activeDiscordToken != "YOUR_DISCORD_TOKEN" {
+				log.Println("Starting Discord gateway with new token...")
+				var err error
+				gatewayMgr, err = gateways.NewGatewayManager(ag, sessSvc, runner.PluginConfig{
+					Plugins: []*adkplugin.Plugin{schedulerPlugin},
+				})
+				if err != nil {
+					log.Printf("Failed to initialize gateway manager: %v\n", err)
+				} else {
+					gatewayMgr.Register(discord.NewDiscordGateway(activeDiscordToken))
+					gatewayMgr.Start(ctx)
+				}
+			}
+		}
+	})
+
 	// Start server routing
 	subFS, err := fs.Sub(webFiles, "web")
 	if err != nil {
@@ -221,7 +249,7 @@ func main() {
 	http.HandleFunc("/api/sessions/delete", handleDeleteSession)
 
 	port := ":8080"
-	log.Printf("Starting Botson Web UI on http://localhost%s using OpenRouter...\n", port)
+	log.Printf("Starting Botson Web UI on http://localhost%s using active provider %q...\n", port, cfg.Provider)
 	
 	server := &http.Server{Addr: port}
 	go func() {
@@ -235,6 +263,10 @@ func main() {
 	<-stop
 
 	log.Println("Shutting down Botson Web UI...")
+	if gatewayMgr != nil {
+		log.Println("Stopping Discord gateway...")
+		gatewayMgr.Stop()
+	}
 	_ = server.Shutdown(context.Background())
 	mgr.StopWatcher()
 	auth.CloseDB()
@@ -829,4 +861,70 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success"})
+}
+
+type DynamicProviderModel struct {
+	ctx             context.Context
+	mgr             *config.Manager
+	openrouterModel model.LLM
+	geminiModel     model.LLM
+}
+
+func NewDynamicProviderModel(ctx context.Context, mgr *config.Manager, envTypeGetter func() string) (*DynamicProviderModel, error) {
+	orModel, err := providers.GetModel(ctx, "openrouter", func() string {
+		pCfg, _ := mgr.GetProvider("openrouter")
+		if pCfg != nil {
+			return pCfg.Model
+		}
+		return ""
+	}, func() string {
+		pCfg, _ := mgr.GetProvider("openrouter")
+		if pCfg != nil {
+			return pCfg.APIKey
+		}
+		return ""
+	}, envTypeGetter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OpenRouter model: %w", err)
+	}
+
+	gemModel, err := providers.GetModel(ctx, "gemini", func() string {
+		pCfg, _ := mgr.GetProvider("gemini")
+		if pCfg != nil {
+			return pCfg.Model
+		}
+		return ""
+	}, func() string {
+		pCfg, _ := mgr.GetProvider("gemini")
+		if pCfg != nil {
+			return pCfg.APIKey
+		}
+		return ""
+	}, envTypeGetter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gemini model: %w", err)
+	}
+
+	return &DynamicProviderModel{
+		ctx:             ctx,
+		mgr:             mgr,
+		openrouterModel: orModel,
+		geminiModel:     gemModel,
+	}, nil
+}
+
+func (dm *DynamicProviderModel) Name() string {
+	provider := dm.mgr.Get().Provider
+	if provider == "gemini" {
+		return dm.geminiModel.Name()
+	}
+	return dm.openrouterModel.Name()
+}
+
+func (dm *DynamicProviderModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	provider := dm.mgr.Get().Provider
+	if provider == "gemini" {
+		return dm.geminiModel.GenerateContent(ctx, req, stream)
+	}
+	return dm.openrouterModel.GenerateContent(ctx, req, stream)
 }
