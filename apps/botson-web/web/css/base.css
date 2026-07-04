@@ -1,0 +1,103 @@
+/* ═══════════════════════════════════════════
+   base.css — Design tokens, resets, typography
+   ═══════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    /* Background layers */
+    --bg-base:        #07090f;
+    --bg-surface:     #0e1118;
+    --bg-elevated:    #161c28;
+    --bg-overlay:     #1d2336;
+
+    /* Accent — electric indigo */
+    --accent:         #7c6dfa;
+    --accent-bright:  #a89fff;
+    --accent-hover:   #6558e8;
+    --accent-glow:    rgba(124, 109, 250, 0.20);
+    --accent-glow-sm: rgba(124, 109, 250, 0.09);
+
+    /* Semantic colours */
+    --success:        #22d3a5;
+    --success-glow:   rgba(34, 211, 165, 0.18);
+    --success-bg:     rgba(34, 211, 165, 0.08);
+    --error:          #f87171;
+    --error-glow:     rgba(248, 113, 113, 0.18);
+    --error-bg:       rgba(248, 113, 113, 0.08);
+    --warning:        #fbbf24;
+    --warning-bg:     rgba(251, 191, 36, 0.08);
+
+    /* Text */
+    --text-primary:   #eaecf4;
+    --text-secondary: #7c8899;
+    --text-muted:     #48526a;
+    --text-accent:    var(--accent-bright);
+
+    /* Borders */
+    --border:         rgba(255, 255, 255, 0.055);
+    --border-medium:  rgba(255, 255, 255, 0.10);
+    --border-strong:  rgba(255, 255, 255, 0.16);
+    --border-accent:  rgba(124, 109, 250, 0.38);
+
+    /* Shadows */
+    --shadow-sm:   0 1px 4px rgba(0,0,0,0.45);
+    --shadow-md:   0 4px 20px rgba(0,0,0,0.50);
+    --shadow-lg:   0 10px 48px rgba(0,0,0,0.60);
+    --shadow-glow: 0 0 32px var(--accent-glow);
+
+    /* Radii */
+    --radius-sm:   6px;
+    --radius-md:   12px;
+    --radius-lg:   18px;
+    --radius-xl:   24px;
+    --radius-full: 9999px;
+
+    /* Typography */
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    /* Transitions */
+    --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in:   cubic-bezier(0.4, 0, 1, 1);
+    --dur-fast:  180ms;
+    --dur-mid:   300ms;
+    --dur-slow:  420ms;
+}
+
+/* ─── Reset ─────────────────────────────── */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-base);
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent text selection on tap (app-like) */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Re-allow text selection inside inputs/textareas/messages */
+input, textarea, .message, pre, code, .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* ─── Scrollbars ─────────────────────────── */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--bg-overlay);
+    border-radius: var(--radius-full);
+}

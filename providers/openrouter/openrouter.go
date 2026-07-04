@@ -21,7 +21,11 @@ type OpenRouterModel struct {
 	modelNameGetter func() string
 	apiKeyGetter    func() string
 	envTypeGetter   func() string
+	// OnUsage is an optional callback invoked after each response with the
+	// prompt token count and total token count reported by OpenRouter.
+	OnUsage func(promptTokens, totalTokens int)
 }
+
 
 // NewModel creates a new OpenRouter implementation of model.LLM using dynamic configuration getters.
 func NewModel(ctx context.Context, modelNameGetter func() string, apiKeyGetter func() string, envTypeGetter func() string) (model.LLM, error) {
@@ -91,9 +95,17 @@ type openRouterResponseChoice struct {
 	Delta   openRouterDeltaMessage `json:"delta"`
 }
 
+type openRouterUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
 type openRouterResponse struct {
 	Choices []openRouterResponseChoice `json:"choices"`
+	Usage   *openRouterUsage           `json:"usage,omitempty"`
 }
+
 
 func (m *OpenRouterModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	return func(yield func(*model.LLMResponse, error) bool) {
@@ -312,12 +324,17 @@ func (m *OpenRouterModel) GenerateContent(ctx context.Context, req *model.LLMReq
 				Partial:      false,
 				TurnComplete: true,
 			}
+			// Fire usage callback if available
+			if m.OnUsage != nil && openResp.Usage != nil {
+				m.OnUsage(openResp.Usage.PromptTokens, openResp.Usage.TotalTokens)
+			}
 			yield(respObj, nil)
 			return
 		}
 
 		// Streaming mode
 		var accumulatedText strings.Builder
+		var streamUsage *openRouterUsage // captured from the last usage-bearing SSE chunk
 		
 		type accumulatedToolCall struct {
 			id        string
@@ -354,6 +371,11 @@ func (m *OpenRouterModel) GenerateContent(ctx context.Context, req *model.LLMReq
 			var chunk openRouterResponse
 			if err := json.Unmarshal([]byte(dataStr), &chunk); err != nil {
 				continue
+			}
+			// Capture usage if the chunk carries it (OpenRouter sends this in the
+			// last data frame before [DONE]).
+			if chunk.Usage != nil {
+				streamUsage = chunk.Usage
 			}
 
 			if len(chunk.Choices) > 0 {
@@ -437,6 +459,10 @@ func (m *OpenRouterModel) GenerateContent(ctx context.Context, req *model.LLMReq
 			},
 			Partial:      false,
 			TurnComplete: true,
+		}
+		// Fire usage callback if available
+		if m.OnUsage != nil && streamUsage != nil {
+			m.OnUsage(streamUsage.PromptTokens, streamUsage.TotalTokens)
 		}
 		yield(finalResp, nil)
 	}

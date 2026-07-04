@@ -7,8 +7,10 @@
     <title>Botson</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/chat.css">
 </head>
 <body>
 
@@ -118,6 +120,15 @@
             <button class="back-btn" data-back aria-label="Back to home">‹</button>
             <span class="screen-nav-icon" aria-hidden="true">💬</span>
             <span class="screen-nav-title">Chat Client</span>
+            <div class="model-info-strip" id="model-info-strip" aria-label="Model information" style="display:none;">
+                <span class="model-info-name" id="model-info-name">—</span>
+                <div class="model-info-ctx" id="model-info-ctx" title="Context usage">
+                    <div class="model-ctx-bar-wrap">
+                        <div class="model-ctx-bar-fill" id="model-ctx-bar-fill" style="width:0%"></div>
+                    </div>
+                    <span class="model-ctx-label" id="model-ctx-label">— / —</span>
+                </div>
+            </div>
         </nav>
 
         <div class="chat-layout-body">
@@ -354,6 +365,6 @@
 <!-- Toast container -->
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-<script src="app.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
