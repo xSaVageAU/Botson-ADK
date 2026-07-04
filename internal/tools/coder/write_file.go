@@ -43,7 +43,8 @@ func MakeWriteFileTool(mgr *executor.Manager) (tool.Tool, error) {
 			resolvedPath = path
 		}
 
-		if IsPathRestricted(resolvedPath) {
+		// Restrict access to the host config directory only when running on the host.
+		if target.Type() != "sandbox" && IsPathRestricted(resolvedPath) {
 			return "", fmt.Errorf("permission denied: access to configuration directory is restricted")
 		}
 

@@ -2,7 +2,6 @@ package codertools
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"botson/internal/executor"
@@ -39,11 +38,12 @@ func MakeReplaceFileContentTool(mgr *executor.Manager) (tool.Tool, error) {
 			resolvedPath = path
 		}
 
-		if IsPathRestricted(resolvedPath) {
+		// Restrict access to the host config directory only when running on the host.
+		if target.Type() != "sandbox" && IsPathRestricted(resolvedPath) {
 			return "", fmt.Errorf("permission denied: access to configuration directory is restricted")
 		}
 
-		data, err := os.ReadFile(resolvedPath)
+		data, err := target.ReadFile(resolvedPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to read file: %w", err)
 		}
@@ -93,7 +93,7 @@ func MakeReplaceFileContentTool(mgr *executor.Manager) (tool.Tool, error) {
 		}
 
 		// Write back
-		err = os.WriteFile(resolvedPath, []byte(content), 0644)
+		err = target.WriteFile(resolvedPath, []byte(content), 0644)
 		if err != nil {
 			return "", fmt.Errorf("failed to save modifications: %w", err)
 		}

@@ -58,6 +58,7 @@ func handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		"discord_token_masked": maskVal(cfg.DiscordToken),
 		"sandboxing":           cfg.Features.Sandboxing,
 		"coder":                cfg.Features.Coder,
+		"exec_tool":            cfg.Features.ExecTool,
 		"openrouter_model":     orModel,
 		"openrouter_key_mask":  orKey,
 		"gemini_model":         gemModel,
@@ -72,6 +73,7 @@ type SetConfigReq struct {
 	DiscordToken    string `json:"discord_token"`
 	Sandboxing      *bool  `json:"sandboxing"`
 	Coder           *bool  `json:"coder"`
+	ExecTool        *bool  `json:"exec_tool"`
 	OpenRouterModel string `json:"openrouter_model"`
 	OpenRouterKey   string `json:"openrouter_key"`
 	GeminiModel     string `json:"gemini_model"`
@@ -110,6 +112,9 @@ func handleSetConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Coder != nil {
 		cfg.Features.Coder = *req.Coder
+	}
+	if req.ExecTool != nil {
+		cfg.Features.ExecTool = *req.ExecTool
 	}
 
 	if err := configMgr.Save(cfg); err != nil {

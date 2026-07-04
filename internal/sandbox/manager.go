@@ -395,12 +395,14 @@ func (s *Sandbox) StartDaemon(netMode NetworkMode) error {
 	return nil
 }
 
-// Exec injects and runs a command inside the running sandbox daemon, returning stdout, stderr, and the exit code
-func (s *Sandbox) Exec(command string) (string, string, int, error) {
+// runExec is the core implementation for running commands inside the sandbox sentry.
+// It supports optional stdin piping, which is used by WriteFile to stream content
+// directly into the container without bypassing the gVisor filesystem interception layer.
+func (s *Sandbox) runExec(command string, stdin []byte) ([]byte, []byte, int, error) {
 	// Start the daemon on-demand if it is not currently running
 	if s.Cmd == nil || s.Cmd.Process == nil {
 		if err := s.StartDaemon(s.NetMode); err != nil {
-			return "", "", -1, fmt.Errorf("starting sandbox daemon on-demand: %w", err)
+			return nil, nil, -1, fmt.Errorf("starting sandbox daemon on-demand: %w", err)
 		}
 		// Give the daemon a moment to boot and configure before running exec commands
 		time.Sleep(1 * time.Second)
@@ -408,9 +410,8 @@ func (s *Sandbox) Exec(command string) (string, string, int, error) {
 
 	runscPath := "runsc"
 	if runtime.GOOS == "windows" {
-		_, err := exec.LookPath("wsl")
-		if err != nil {
-			return "", "", -1, fmt.Errorf("WSL 'wsl' command not found")
+		if _, err := exec.LookPath("wsl"); err != nil {
+			return nil, nil, -1, fmt.Errorf("WSL 'wsl' command not found")
 		}
 		runscPath = "wsl"
 	} else {
@@ -421,7 +422,7 @@ func (s *Sandbox) Exec(command string) (string, string, int, error) {
 			if _, errLocal := os.Stat(localPath); errLocal == nil {
 				runscPath = localPath
 			} else {
-				return "", "", -1, fmt.Errorf("gVisor 'runsc' command not found")
+				return nil, nil, -1, fmt.Errorf("gVisor 'runsc' command not found")
 			}
 		}
 	}
@@ -448,40 +449,93 @@ func (s *Sandbox) Exec(command string) (string, string, int, error) {
 		cmd = exec.Command(runscPath, runscArgs...)
 	}
 
+	// Always set stdin — passing an empty reader ensures cat/tee receive immediate EOF
+	// for zero-byte files rather than blocking indefinitely on the process stdin.
+	cmd.Stdin = bytes.NewReader(stdin)
+
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
 	err := cmd.Run()
-	stdout := stdoutBuf.String()
-	stderr := stderrBuf.String()
-
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			return stdout, stderr, exitError.ExitCode(), nil
+			return stdoutBuf.Bytes(), stderrBuf.Bytes(), exitError.ExitCode(), nil
 		}
-		return stdout, stderr, -1, err
+		return stdoutBuf.Bytes(), stderrBuf.Bytes(), -1, err
 	}
 
-	return stdout, stderr, 0, nil
+	return stdoutBuf.Bytes(), stderrBuf.Bytes(), 0, nil
 }
 
-// WriteFile writes a file directly into the sandbox guest workspace at microsecond-level speeds
-func (s *Sandbox) WriteFile(path string, content []byte, perm os.FileMode) error {
-	target := filepath.Join(s.RootfsPath, filepath.Clean(path))
+// Exec injects and runs a command inside the running sandbox daemon, returning stdout, stderr, and the exit code
+func (s *Sandbox) Exec(command string) (string, string, int, error) {
+	stdout, stderr, code, err := s.runExec(command, nil)
+	return string(stdout), string(stderr), code, err
+}
 
-	// Ensure parent directory exists inside container
-	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+// hostToGuestPath converts a host-side absolute path (which includes the RootfsPath prefix)
+// into the corresponding guest-side path inside the sandbox container.
+func (s *Sandbox) hostToGuestPath(hostPath string) (string, error) {
+	cleanHost := filepath.Clean(hostPath)
+	cleanRoot := filepath.Clean(s.RootfsPath)
+	rel, err := filepath.Rel(cleanRoot, cleanHost)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("path %q is outside the sandbox rootfs boundary", hostPath)
+	}
+	return "/" + filepath.ToSlash(rel), nil
+}
+
+// sandboxShellQuote wraps a path in single quotes for safe use in /bin/sh commands,
+// escaping any embedded single quotes to prevent injection.
+func sandboxShellQuote(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", "'\\''" ) + "'"
+}
+
+// WriteFile writes a file into the sandbox guest filesystem by piping content through
+// runsc exec. This ensures all writes are mediated by the gVisor sentry and are
+// immediately visible inside the running container, even with --overlay2 none.
+func (s *Sandbox) WriteFile(path string, content []byte, perm os.FileMode) error {
+	guestPath, err := s.hostToGuestPath(path)
+	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(target, content, perm)
+	// Ensure parent directory exists inside the container (best-effort).
+	parentDir := filepath.ToSlash(filepath.Dir(guestPath))
+	_, _, _, _ = s.runExec(fmt.Sprintf("mkdir -p %s", sandboxShellQuote(parentDir)), nil)
+
+	// Pipe raw content via stdin; the sentry intercepts the write and
+	// immediately persists it in the container's filesystem view.
+	writeCmd := fmt.Sprintf("cat > %s && chmod %04o %s",
+		sandboxShellQuote(guestPath), perm, sandboxShellQuote(guestPath))
+	_, stderr, code, err := s.runExec(writeCmd, content)
+	if err != nil {
+		return fmt.Errorf("sandbox WriteFile error: %w", err)
+	}
+	if code != 0 {
+		return fmt.Errorf("sandbox WriteFile failed (exit %d): %s", code, string(stderr))
+	}
+	return nil
 }
 
-// ReadFile reads a file directly from the sandbox guest workspace
+// ReadFile reads a file from inside the sandbox guest filesystem via runsc exec.
+// Output is captured from the sentry's VFS, not from the host-side lower layer,
+// so it always reflects the container's current filesystem state.
 func (s *Sandbox) ReadFile(path string) ([]byte, error) {
-	target := filepath.Join(s.RootfsPath, filepath.Clean(path))
-	return os.ReadFile(target)
+	guestPath, err := s.hostToGuestPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	stdout, stderr, code, err := s.runExec(fmt.Sprintf("cat %s", sandboxShellQuote(guestPath)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("sandbox ReadFile error: %w", err)
+	}
+	if code != 0 {
+		return nil, fmt.Errorf("sandbox ReadFile failed (exit %d): %s", code, string(stderr))
+	}
+	return stdout, nil
 }
 
 // Close terminates the running background daemon and safely sweeps away all temporary bundle files

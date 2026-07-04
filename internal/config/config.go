@@ -18,6 +18,7 @@ var defaultPromptContent string
 type FeaturesConfig struct {
 	Sandboxing bool `json:"sandboxing"`
 	Coder      bool `json:"coder"`
+	ExecTool   bool `json:"exec_tool"`
 }
 
 type Config struct {
@@ -108,6 +109,7 @@ func (m *Manager) Load() error {
 				"features": map[string]any{
 					"sandboxing": false,
 					"coder":      true,
+					"exec_tool":  true,
 				},
 			}
 			raw, err := json.MarshalIndent(m.data, "", "  ")
@@ -170,6 +172,7 @@ func (m *Manager) Get() *Config {
 	var cfg Config
 	cfg.Features.Sandboxing = false
 	cfg.Features.Coder = true
+	cfg.Features.ExecTool = true
 
 	_ = json.Unmarshal(bytes, &cfg)
 

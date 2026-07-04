@@ -18,6 +18,7 @@ export async function loadConfig() {
 
         document.getElementById('cfg-sandboxing').checked  = data.sandboxing || false;
         document.getElementById('cfg-coder').checked       = data.coder      || false;
+        document.getElementById('cfg-exec-tool').checked   = data.exec_tool  !== false;
 
         document.getElementById('cfg-or-model').value      = data.openrouter_model    || '';
         document.getElementById('cfg-or-key').value        = data.openrouter_key_mask || '';
@@ -43,6 +44,7 @@ export function initConfigForm() {
             discord_token:    document.getElementById('cfg-discord-token').value,
             sandboxing:       document.getElementById('cfg-sandboxing').checked,
             coder:            document.getElementById('cfg-coder').checked,
+            exec_tool:        document.getElementById('cfg-exec-tool').checked,
             openrouter_model: document.getElementById('cfg-or-model').value,
             openrouter_key:   document.getElementById('cfg-or-key').value,
             gemini_model:     document.getElementById('cfg-gemini-model').value,

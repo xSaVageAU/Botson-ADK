@@ -15,12 +15,14 @@ import (
 func MakeAllTools(mgr *executor.Manager, features config.FeaturesConfig) ([]tool.Tool, error) {
 	var list []tool.Tool
 
-	// 1. Terminal Tools (Always enabled as core capability)
-	runCommandTool, err := terminaltools.MakeRunCommandTool(mgr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make run_command tool: %w", err)
+	// 1. Terminal Tools (run_command)
+	if features.ExecTool {
+		runCommandTool, err := terminaltools.MakeRunCommandTool(mgr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make run_command tool: %w", err)
+		}
+		list = append(list, runCommandTool)
 	}
-	list = append(list, runCommandTool)
 
 	// 2. Coder (Filesystem & Search) Tools
 	if features.Coder {

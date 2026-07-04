@@ -37,7 +37,10 @@ func MakeReadFileTool(mgr *executor.Manager) (tool.Tool, error) {
 			resolvedPath = path
 		}
 
-		if IsPathRestricted(resolvedPath) {
+		// Restrict access to the host config directory only when running on the host.
+		// Sandbox targets are already isolated; their rootfs lives under .botson-adk
+		// so IsPathRestricted would falsely block every sandbox path.
+		if target.Type() != "sandbox" && IsPathRestricted(resolvedPath) {
 			return "", fmt.Errorf("permission denied: access to configuration directory is restricted")
 		}
 

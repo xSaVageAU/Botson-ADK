@@ -2,6 +2,7 @@ package codertools
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,10 +34,10 @@ func MakeGrepSearchTool(mgr *executor.Manager) (tool.Tool, error) {
 	return functiontool.New(functiontool.Config{
 		Name:        "grep_search",
 		Description: "Finds exact pattern or regex matches in the active environment's workspace files. Returns line numbers and contents.",
-	}, func(ctx agent.Context, args GrepSearchArgs) ([]GrepMatch, error) {
+	}, func(ctx agent.Context, args GrepSearchArgs) (string, error) {
 		query := args.Query
 		if query == "" {
-			return nil, fmt.Errorf("query cannot be empty")
+			return "", fmt.Errorf("query cannot be empty")
 		}
 
 		target := mgr.GetActiveTarget()
@@ -54,8 +55,9 @@ func MakeGrepSearchTool(mgr *executor.Manager) (tool.Tool, error) {
 			}
 		}
 
-		if IsPathRestricted(baseDir) {
-			return nil, fmt.Errorf("permission denied: access to configuration directory is restricted")
+		// Restrict access to the host config directory only when running on the host.
+		if target.Type() != "sandbox" && IsPathRestricted(baseDir) {
+			return "", fmt.Errorf("permission denied: access to configuration directory is restricted")
 		}
 
 		// Compile regex or match criteria
@@ -68,7 +70,7 @@ func MakeGrepSearchTool(mgr *executor.Manager) (tool.Tool, error) {
 			}
 			re, err = regexp.Compile(pattern)
 			if err != nil {
-				return nil, fmt.Errorf("invalid regex query: %w", err)
+				return "", fmt.Errorf("invalid regex query: %w", err)
 			}
 		} else if args.CaseInsensitive {
 			query = strings.ToLower(query)
@@ -159,9 +161,17 @@ func MakeGrepSearchTool(mgr *executor.Manager) (tool.Tool, error) {
 		})
 
 		if err != nil && err.Error() != "limit_reached" {
-			return nil, fmt.Errorf("failed to scan workspace: %w", err)
+			return "", fmt.Errorf("failed to scan workspace: %w", err)
 		}
 
-		return matches, nil
+		if len(matches) == 0 {
+			return "No matches found.", nil
+		}
+
+		out, err := json.Marshal(matches)
+		if err != nil {
+			return "", fmt.Errorf("failed to encode results: %w", err)
+		}
+		return string(out), nil
 	})
 }
