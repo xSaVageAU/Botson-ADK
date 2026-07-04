@@ -19,9 +19,7 @@ Write-Host "`n=== 2. Uploading binary to remote container ($RemoteHost) ===" -Fo
 scp build/botson-web/botson-web-linux-amd64 "${RemoteHost}:${TempPath}"
 Write-Host "Upload complete." -ForegroundColor Green
 
-Write-Host "`n=== 3. Stopping remote service and swapping binary ===" -ForegroundColor Cyan
-# Stop the running process if active (using systemctl or pkill)
-ssh $RemoteHost "pkill -9 -f botson-web-linux-amd64 || true"
+Write-Host "`n=== 3. Swapping binary and restarting remote service ===" -ForegroundColor Cyan
 ssh $RemoteHost "mv $TempPath $RemotePath && chmod +x $RemotePath && systemctl restart $ServiceName"
 Write-Host "Binary swapped and service restarted successfully." -ForegroundColor Green
 
