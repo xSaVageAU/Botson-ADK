@@ -343,12 +343,15 @@ async function loadSessions() {
 
             // Title format
             let titleText = s.id;
+            const sessionDate = new Date(s.last_update);
+            const timeStr = sessionDate.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
             if (s.id.startsWith("discord:")) {
                 const parts = s.id.split("-");
                 const channelId = parts[0].replace("discord:", "");
-                titleText = "Discord: " + channelId.substring(0, 8);
+                titleText = "Discord: " + channelId.substring(0, 6) + " (" + timeStr + ")";
             } else {
-                titleText = "Web Chat: " + s.id.substring(0, 8);
+                titleText = "Web Chat: " + s.id.substring(0, 6) + " (" + timeStr + ")";
             }
 
             const titleEl = document.createElement('div');

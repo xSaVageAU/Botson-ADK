@@ -754,10 +754,20 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	list := []SessionInfo{}
 	for _, s := range res.Sessions {
+		preview := "New Conversation"
+		fullSess, err := sessService.Get(r.Context(), &session.GetRequest{
+			AppName:   agentName,
+			UserID:    s.UserID(),
+			SessionID: s.ID(),
+		})
+		if err == nil && fullSess != nil {
+			preview = getSessionPreview(fullSess.Session)
+		}
+
 		list = append(list, SessionInfo{
 			ID:         s.ID(),
 			UserID:     s.UserID(),
-			Preview:    getSessionPreview(s),
+			Preview:    preview,
 			LastUpdate: s.LastUpdateTime(),
 		})
 	}
