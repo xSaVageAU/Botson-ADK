@@ -394,7 +394,13 @@ async function createSession() {
         currentSessionId = data.id;
         currentSessionUserId = 'user';
         await loadSessions();
-        container.innerHTML = '<div class="message agent">New session started! How can I assist you today?</div>';
+        container.innerHTML = `
+            <div class="chat-hero-area">
+                <div class="hero-logo">🤖</div>
+                <h2 class="hero-title">Where should we begin?</h2>
+                <p class="hero-subtitle">Ask Botson to write code, manage configurations, or execute commands in your sandbox environment.</p>
+            </div>
+        `;
     } catch (err) {
         console.error('Failed to create session', err);
     }
@@ -416,7 +422,13 @@ async function selectSession(id, userId) {
         if (data.messages && data.messages.length > 0) {
             data.messages.forEach(msg => appendMessage(msg.content, msg.role, msg.tool_name));
         } else {
-            container.innerHTML = '<div class="message agent">Empty session. Ask me anything!</div>';
+            container.innerHTML = `
+                <div class="chat-hero-area">
+                    <div class="hero-logo">🤖</div>
+                    <h2 class="hero-title">Where should we begin?</h2>
+                    <p class="hero-subtitle">Ask Botson to write code, manage configurations, or execute commands in your sandbox environment.</p>
+                </div>
+            `;
         }
         container.scrollTop = container.scrollHeight;
     } catch (err) {

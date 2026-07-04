@@ -1439,3 +1439,46 @@ tbody tr:last-child td { border-bottom: none; }
     clip: rect(0,0,0,0);
     border: 0;
 }
+
+/* Center Hero Area in Chat Container */
+.chat-hero-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    margin: auto;
+    max-width: 520px;
+    padding: 2rem;
+    animation: fadeIn var(--dur-slow) var(--ease-out);
+}
+
+.hero-logo {
+    font-size: 3rem;
+    margin-bottom: 1.25rem;
+    filter: drop-shadow(0 0 15px var(--accent-glow));
+    animation: pulse 3s infinite ease-in-out;
+}
+
+.hero-title {
+    font-family: var(--font-sans);
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--text-base);
+    margin-bottom: 0.75rem;
+    background: linear-gradient(135deg, var(--text-base) 30%, var(--accent-bright) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.03em;
+}
+
+.hero-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(124, 58, 237, 0.4)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 0 25px rgba(124, 58, 237, 0.7)); }
+}
