@@ -144,6 +144,7 @@ function showToast(message, type = 'info', durationMs = 4000) {
 // ─── Chat Client ──────────────────────────────────────────────────────────────
 
 let currentSessionId = '';
+let currentSessionUserId = 'user';
 
 const form      = document.getElementById('input-form');
 const input     = document.getElementById('message-input');
@@ -168,7 +169,7 @@ form.addEventListener('submit', async (e) => {
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, session_id: currentSessionId })
+            body: JSON.stringify({ message: text, session_id: currentSessionId, user_id: currentSessionUserId })
         });
 
         typingIndicator.remove();
@@ -238,7 +239,7 @@ form.addEventListener('submit', async (e) => {
         }
 
         // Refresh fully resolved session messages from DB
-        await selectSession(currentSessionId);
+        await selectSession(currentSessionId, currentSessionUserId);
     } catch (err) {
         typingIndicator.remove();
         appendMessage('❌ Connection error to the local server.', 'agent');
@@ -340,9 +341,18 @@ async function loadSessions() {
             pill.setAttribute('role', 'listitem');
             if (s.id === currentSessionId) pill.classList.add('active');
             pill.setAttribute('data-id', s.id);
+            pill.setAttribute('data-user-id', s.user_id);
 
             const label = document.createElement('span');
-            label.textContent = s.id.substring(0, 10) + '…';
+            let labelText = s.id;
+            if (s.id.startsWith("discord:")) {
+                const parts = s.id.split("-");
+                const channelId = parts[0].replace("discord:", "");
+                labelText = "Discord: " + channelId.substring(0, 6) + "…";
+            } else {
+                labelText = s.id.substring(0, 10) + "…";
+            }
+            label.textContent = labelText;
             pill.appendChild(label);
 
             const delSpan = document.createElement('span');
@@ -352,16 +362,16 @@ async function loadSessions() {
             delSpan.textContent = '✕';
             delSpan.addEventListener('click', (e) => {
                 e.stopPropagation();
-                deleteSession(s.id);
+                deleteSession(s.id, s.user_id);
             });
             pill.appendChild(delSpan);
 
-            pill.addEventListener('click', () => selectSession(s.id));
+            pill.addEventListener('click', () => selectSession(s.id, s.user_id));
             bar.insertBefore(pill, newBtn);
         });
 
         if (!currentSessionId && data.length > 0) {
-            selectSession(data[0].id);
+            selectSession(data[0].id, data[0].user_id);
         }
     } catch (err) {
         console.error('Failed to load sessions', err);
@@ -373,6 +383,7 @@ async function createSession() {
         const response = await fetch('/api/sessions/create', { method: 'POST' });
         const data     = await response.json();
         currentSessionId = data.id;
+        currentSessionUserId = 'user';
         await loadSessions();
         container.innerHTML = '<div class="message agent">New session started! How can I assist you today?</div>';
     } catch (err) {
@@ -380,15 +391,16 @@ async function createSession() {
     }
 }
 
-async function selectSession(id) {
+async function selectSession(id, userId) {
     currentSessionId = id;
+    currentSessionUserId = userId || 'user';
 
     document.querySelectorAll('.session-pill').forEach(pill => {
         pill.classList.toggle('active', pill.getAttribute('data-id') === id);
     });
 
     try {
-        const response = await fetch(`/api/sessions/get?id=${id}`);
+        const response = await fetch(`/api/sessions/get?id=${id}&user_id=${currentSessionUserId}`);
         const data     = await response.json();
 
         container.innerHTML = '';
@@ -403,11 +415,14 @@ async function selectSession(id) {
     }
 }
 
-async function deleteSession(id) {
+async function deleteSession(id, userId) {
     if (!confirm('Delete this chat session?')) return;
     try {
-        await fetch(`/api/sessions/delete?id=${id}`, { method: 'DELETE' });
-        if (id === currentSessionId) currentSessionId = '';
+        await fetch(`/api/sessions/delete?id=${id}&user_id=${userId || 'user'}`, { method: 'DELETE' });
+        if (id === currentSessionId) {
+            currentSessionId = '';
+            currentSessionUserId = 'user';
+        }
         await loadSessions();
     } catch (err) {
         console.error('Failed to delete session', err);

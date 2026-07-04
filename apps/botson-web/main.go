@@ -65,6 +65,7 @@ var (
 type ChatRequest struct {
 	Message   string `json:"message"`
 	SessionID string `json:"session_id"`
+	UserID    string `json:"user_id"`
 }
 
 type ChatResponse struct {
@@ -327,7 +328,12 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
-	events := agentRunner.Run(r.Context(), "user", sessionID, &genai.Content{
+	userID := req.UserID
+	if userID == "" {
+		userID = "user"
+	}
+
+	events := agentRunner.Run(r.Context(), userID, sessionID, &genai.Content{
 		Role: "user",
 		Parts: []*genai.Part{
 			{Text: req.Message},
@@ -701,7 +707,7 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	res, err := sessService.List(r.Context(), &session.ListRequest{
 		AppName: agentName,
-		UserID:  "user",
+		UserID:  "",
 	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to list sessions: %v", err), http.StatusInternalServerError)
@@ -758,9 +764,14 @@ func handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = "user"
+	}
+
 	res, err := sessService.Get(r.Context(), &session.GetRequest{
 		AppName:   agentName,
-		UserID:    "user",
+		UserID:    userID,
 		SessionID: sessionID,
 	})
 	if err != nil {
@@ -849,9 +860,14 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := r.URL.Query().Get("user_id")
+	if userID == "" {
+		userID = "user"
+	}
+
 	err := sessService.Delete(r.Context(), &session.DeleteRequest{
 		AppName:   agentName,
-		UserID:    "user",
+		UserID:    userID,
 		SessionID: sessionID,
 	})
 	if err != nil {
