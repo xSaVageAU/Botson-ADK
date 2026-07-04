@@ -716,6 +716,7 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 
 	type SessionInfo struct {
 		ID         string    `json:"id"`
+		UserID     string    `json:"user_id"`
 		LastUpdate time.Time `json:"last_update"`
 	}
 
@@ -723,6 +724,7 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 	for _, s := range res.Sessions {
 		list = append(list, SessionInfo{
 			ID:         s.ID(),
+			UserID:     s.UserID(),
 			LastUpdate: s.LastUpdateTime(),
 		})
 	}
