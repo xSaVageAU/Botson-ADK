@@ -517,75 +517,200 @@ input, textarea, .message, pre, code, .selectable {
     background: var(--bg-base);
 }
 
-/* Session pill bar above messages */
-.chat-session-bar {
+/* Layout body under chat screen navigation */
+.screen-chat-layout {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.6rem 1.25rem;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.chat-layout-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Sidebar Column (Left) */
+.chat-sidebar {
+    width: 280px;
     background: var(--bg-surface);
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-    flex-shrink: 0;
-}
-
-.chat-session-bar::-webkit-scrollbar { height: 0; }
-
-.session-pill {
+    border-right: 1px solid var(--border);
     display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.75rem;
-    border-radius: var(--radius-full);
-    font-size: 0.76rem;
-    font-family: var(--font-mono);
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-    border: 1px solid transparent;
-    background: var(--bg-elevated);
-    color: var(--text-muted);
-    transition: background-color var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
-    -webkit-tap-highlight-color: transparent;
+    flex-direction: column;
     flex-shrink: 0;
+    transition: transform var(--dur-medium) var(--ease-out);
 }
 
-.session-pill.active {
-    background: var(--accent-glow-sm);
-    border-color: var(--border-accent);
-    color: var(--accent-bright);
-}
-
-.session-pill-del {
-    font-size: 0.6rem;
-    opacity: 0.5;
-    margin-left: 0.1rem;
-    cursor: pointer;
-    transition: opacity var(--dur-fast), color var(--dur-fast);
-}
-
-.session-pill:hover .session-pill-del { opacity: 0.9; }
-.session-pill-del:hover { color: var(--error); }
-
-.new-session-pill {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: var(--radius-sm);
+/* New Chat Button */
+.new-chat-btn {
+    margin: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-lg);
     background: var(--accent-glow-sm);
     border: 1px solid var(--border-accent);
     color: var(--accent-bright);
-    font-size: 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
-    flex-shrink: 0;
-    transition: background-color var(--dur-fast), transform var(--dur-fast);
-    -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: background var(--dur-fast), transform var(--dur-fast);
 }
 
-.new-session-pill:hover { background: var(--accent-glow); }
-.new-session-pill:active { transform: scale(0.88); }
+.new-chat-btn:hover {
+    background: var(--accent-glow);
+}
+
+.new-chat-btn:active {
+    transform: scale(0.97);
+}
+
+.new-chat-btn .plus-icon {
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+/* Scrollable Session List */
+.chat-session-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 0.75rem 1rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.chat-session-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.chat-session-list::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius-full);
+}
+
+/* Session Item (Card) */
+.session-card {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    position: relative;
+    transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+
+.session-card:hover {
+    background: var(--bg-elevated);
+}
+
+.session-card.active {
+    background: var(--accent-glow-sm);
+    border-color: var(--border-accent);
+}
+
+/* Text Container inside Card */
+.session-card-title {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-base);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0.15rem;
+    padding-right: 1.25rem; /* Make space for delete button */
+}
+
+.session-card.active .session-card-title {
+    color: var(--accent-bright);
+}
+
+.session-card-preview {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Delete button inside Card */
+.session-card-del {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
+}
+
+.session-card:hover .session-card-del {
+    opacity: 0.6;
+}
+
+.session-card-del:hover {
+    opacity: 1 !important;
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--error);
+}
+
+/* Chat Main Area (Right Column) */
+.chat-main-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background: var(--bg-base);
+    height: 100%;
+}
+
+@media (max-width: 768px) {
+    .chat-sidebar {
+        width: 220px;
+    }
+}
+
+@media (max-width: 600px) {
+    .chat-layout-body {
+        flex-direction: column;
+    }
+    .chat-sidebar {
+        width: 100%;
+        height: 180px;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    .chat-session-list {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0.5rem 1rem;
+        gap: 0.6rem;
+    }
+    .session-card {
+        width: 160px;
+        flex-shrink: 0;
+        padding: 0.5rem 0.75rem;
+    }
+    .session-card-del {
+        top: 0.5rem;
+        transform: none;
+        opacity: 0.5;
+    }
+}
 
 /* Messages */
 #chat-container {

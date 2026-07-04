@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -699,6 +700,23 @@ func handleApprovePairings(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"status": "success", "username": username, "message": fmt.Sprintf("Successfully approved pairing for %s!", username)})
 }
 
+func getSessionPreview(s session.Session) string {
+	for ev := range s.Events().All() {
+		if ev.Content != nil && ev.Author == "user" {
+			for _, part := range ev.Content.Parts {
+				if part.Text != "" {
+					text := strings.TrimSpace(part.Text)
+					if len(text) > 45 {
+						return text[:45] + "..."
+					}
+					return text
+				}
+			}
+		}
+	}
+	return "New Conversation"
+}
+
 func handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -714,9 +732,23 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sort sessions: newest to oldest
+	slices.SortFunc(res.Sessions, func(a, b session.Session) int {
+		ta := a.LastUpdateTime()
+		tb := b.LastUpdateTime()
+		if ta.After(tb) {
+			return -1
+		}
+		if ta.Before(tb) {
+			return 1
+		}
+		return 0
+	})
+
 	type SessionInfo struct {
 		ID         string    `json:"id"`
 		UserID     string    `json:"user_id"`
+		Preview    string    `json:"preview"`
 		LastUpdate time.Time `json:"last_update"`
 	}
 
@@ -725,6 +757,7 @@ func handleListSessions(w http.ResponseWriter, r *http.Request) {
 		list = append(list, SessionInfo{
 			ID:         s.ID(),
 			UserID:     s.UserID(),
+			Preview:    getSessionPreview(s),
 			LastUpdate: s.LastUpdateTime(),
 		})
 	}

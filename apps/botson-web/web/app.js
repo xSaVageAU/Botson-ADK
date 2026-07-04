@@ -240,6 +240,7 @@ form.addEventListener('submit', async (e) => {
 
         // Refresh fully resolved session messages from DB
         await selectSession(currentSessionId, currentSessionUserId);
+        await loadSessions();
     } catch (err) {
         typingIndicator.remove();
         appendMessage('❌ Connection error to the local server.', 'agent');
@@ -314,16 +315,14 @@ function showTypingIndicator() {
 // ─── Session Management ───────────────────────────────────────────────────────
 
 /**
- * Render sessions as horizontal pill buttons in the chat session bar.
+ * Render sessions as cards.
  */
 async function loadSessions() {
     const bar = document.getElementById('session-list');
+    if (!bar) return;
 
-    // Keep the new-session button at the end
-    const newBtn = document.getElementById('btn-new-session');
-
-    // Remove all session pills (not the new-session button)
-    bar.querySelectorAll('.session-pill').forEach(p => p.remove());
+    // Clear all session cards
+    bar.innerHTML = '';
 
     try {
         const response = await fetch('/api/sessions');
@@ -334,40 +333,47 @@ async function loadSessions() {
             return;
         }
 
-        // Insert pills before the new-session button
         data.forEach(s => {
-            const pill = document.createElement('div');
-            pill.classList.add('session-pill');
-            pill.setAttribute('role', 'listitem');
-            if (s.id === currentSessionId) pill.classList.add('active');
-            pill.setAttribute('data-id', s.id);
-            pill.setAttribute('data-user-id', s.user_id);
+            const card = document.createElement('div');
+            card.classList.add('session-card');
+            card.setAttribute('role', 'listitem');
+            if (s.id === currentSessionId) card.classList.add('active');
+            card.setAttribute('data-id', s.id);
+            card.setAttribute('data-user-id', s.user_id);
 
-            const label = document.createElement('span');
-            let labelText = s.id;
+            // Title format
+            let titleText = s.id;
             if (s.id.startsWith("discord:")) {
                 const parts = s.id.split("-");
                 const channelId = parts[0].replace("discord:", "");
-                labelText = "Discord: " + channelId.substring(0, 6) + "…";
+                titleText = "Discord: " + channelId.substring(0, 8);
             } else {
-                labelText = s.id.substring(0, 10) + "…";
+                titleText = "Web Chat: " + s.id.substring(0, 8);
             }
-            label.textContent = labelText;
-            pill.appendChild(label);
 
-            const delSpan = document.createElement('span');
-            delSpan.classList.add('session-pill-del');
-            delSpan.setAttribute('role', 'button');
-            delSpan.setAttribute('aria-label', 'Delete session');
-            delSpan.textContent = '✕';
-            delSpan.addEventListener('click', (e) => {
+            const titleEl = document.createElement('div');
+            titleEl.classList.add('session-card-title');
+            titleEl.textContent = titleText;
+            card.appendChild(titleEl);
+
+            const previewEl = document.createElement('div');
+            previewEl.classList.add('session-card-preview');
+            previewEl.textContent = s.preview || "New Conversation";
+            card.appendChild(previewEl);
+
+            const delBtn = document.createElement('span');
+            delBtn.classList.add('session-card-del');
+            delBtn.setAttribute('role', 'button');
+            delBtn.setAttribute('aria-label', 'Delete session');
+            delBtn.textContent = '✕';
+            delBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 deleteSession(s.id, s.user_id);
             });
-            pill.appendChild(delSpan);
+            card.appendChild(delBtn);
 
-            pill.addEventListener('click', () => selectSession(s.id, s.user_id));
-            bar.insertBefore(pill, newBtn);
+            card.addEventListener('click', () => selectSession(s.id, s.user_id));
+            bar.appendChild(card);
         });
 
         if (!currentSessionId && data.length > 0) {
@@ -395,8 +401,8 @@ async function selectSession(id, userId) {
     currentSessionId = id;
     currentSessionUserId = userId || 'user';
 
-    document.querySelectorAll('.session-pill').forEach(pill => {
-        pill.classList.toggle('active', pill.getAttribute('data-id') === id);
+    document.querySelectorAll('.session-card').forEach(card => {
+        card.classList.toggle('active', card.getAttribute('data-id') === id);
     });
 
     try {

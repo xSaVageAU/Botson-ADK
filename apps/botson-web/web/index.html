@@ -111,7 +111,7 @@
     <!-- ══════════════════════════════════════
          SCREEN: CHAT CLIENT
          ══════════════════════════════════════ -->
-    <section id="screen-chat" class="screen" aria-label="Chat client">
+    <section id="screen-chat" class="screen screen-chat-layout" aria-label="Chat client">
 
         <!-- Top nav bar -->
         <nav class="screen-nav" aria-label="Chat navigation">
@@ -120,34 +120,43 @@
             <span class="screen-nav-title">Chat Client</span>
         </nav>
 
-        <!-- Session pills (horizontal scroll) -->
-        <div class="chat-session-bar" id="session-list" role="list" aria-label="Chat sessions">
-            <!-- Populated dynamically -->
-            <button class="new-session-pill" id="btn-new-session" title="New conversation" aria-label="New conversation">+</button>
-        </div>
-
-        <!-- Messages -->
-        <div id="chat-container" role="log" aria-label="Conversation">
-            <div class="message agent">
-                Hello! I am Botson, configured here specifically using OpenRouter. How can I assist you with your coding workspace tasks today?
-            </div>
-        </div>
-
-        <!-- Input bar -->
-        <div id="input-container">
-            <form id="input-form" autocomplete="off" aria-label="Send message">
-                <input
-                    type="text"
-                    id="message-input"
-                    placeholder="Message Botson…"
-                    required
-                    autocomplete="off"
-                    aria-label="Type a message"
-                >
-                <button type="submit" id="send-btn" aria-label="Send">
-                    ↑
+        <div class="chat-layout-body">
+            <!-- Sidebar (left column) -->
+            <aside class="chat-sidebar">
+                <button class="new-chat-btn" id="btn-new-session" aria-label="New chat">
+                    <span class="plus-icon">+</span> New Chat
                 </button>
-            </form>
+                <div class="chat-session-list" id="session-list" role="list" aria-label="Chat sessions">
+                    <!-- Populated dynamically -->
+                </div>
+            </aside>
+
+            <!-- Chat Main Area (right column) -->
+            <main class="chat-main-area">
+                <!-- Messages -->
+                <div id="chat-container" role="log" aria-label="Conversation">
+                    <div class="message agent">
+                        Hello! I am Botson, configured here specifically using OpenRouter. How can I assist you with your coding workspace tasks today?
+                    </div>
+                </div>
+
+                <!-- Input bar -->
+                <div id="input-container">
+                    <form id="input-form" autocomplete="off" aria-label="Send message">
+                        <input
+                            type="text"
+                            id="message-input"
+                            placeholder="Message Botson…"
+                            required
+                            autocomplete="off"
+                            aria-label="Type a message"
+                        >
+                        <button type="submit" id="send-btn" aria-label="Send">
+                            ↑
+                        </button>
+                    </form>
+                </div>
+            </main>
         </div>
     </section>
 
